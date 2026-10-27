@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
 import { Development } from '../../app/types';
-import { formatCentsToBRL, parseBRLToCents } from '../../lib/formatters';
+import { formatCentsToBRL, parseBRLToCents, formatThousands } from '../../lib/formatters';
 
 export const DevelopmentsView: React.FC = () => {
   const {
@@ -68,7 +68,7 @@ export const DevelopmentsView: React.FC = () => {
     setAffectationPatrimony(d.affectationPatrimony);
     setConstructionStatus(d.constructionStatus);
     setDefaultCommissionRate(String(d.defaultCommissionRate));
-    setAverageTicketInput(String(d.averageTicketCents / 100));
+    setAverageTicketInput(formatThousands(Math.round(d.averageTicketCents / 100)));
     setShowModal(true);
   };
 
@@ -351,8 +351,9 @@ export const DevelopmentsView: React.FC = () => {
                   </label>
                   <input
                     type="text"
+                    placeholder="Ex: 500.000"
                     value={averageTicketInput}
-                    onChange={(e) => setAverageTicketInput(e.target.value)}
+                    onChange={(e) => setAverageTicketInput(formatThousands(e.target.value))}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 font-mono"
                   />
                 </div>

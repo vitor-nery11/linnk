@@ -128,3 +128,15 @@ export function formatCNPJ(value?: string): string {
   return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
 }
 
+/**
+ * Formata números inteiros com separador de milhar pt-BR (ponto a cada três dígitos):
+ * Ex: "500000" -> "500.000", "1250000" -> "1.250.000"
+ */
+export function formatThousands(value?: string | number): string {
+  if (value === undefined || value === null || value === '') return '';
+  const digits = String(value).replace(/\D/g, '');
+  if (!digits) return '';
+  const cleanDigits = digits.replace(/^0+(?=\d)/, '');
+  return cleanDigits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
