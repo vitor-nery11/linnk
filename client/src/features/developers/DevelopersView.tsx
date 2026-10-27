@@ -215,7 +215,7 @@ export const DevelopersView: React.FC = () => {
             <form onSubmit={handleSubmit} className="p-6 space-y-4 text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold mb-1">Nome Fantasia *</label>
+                  <label className="block text-xs font-semibold mb-1">Nome *</label>
                   <input
                     type="text"
                     required
