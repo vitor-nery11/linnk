@@ -38,10 +38,12 @@ export const AttendancesView: React.FC = () => {
     brokers,
     developments,
     attendances,
+    sales,
     users,
     selectedReferralId,
     setSelectedReferralId,
     addAttendance,
+    registerSale,
     setActiveNav,
   } = useApp();
 
@@ -290,15 +292,34 @@ export const AttendancesView: React.FC = () => {
                   </p>
                 </div>
 
-                {!isBroker && (
+                {!isBroker && currentRef && (
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setActiveNav('sales')}
-                      disabled={!isReleased}
-                      className="px-4 py-2.5 rounded-2xl bg-linnk-obsidian hover:bg-linnk-obsidian-800 text-white font-display font-bold text-xs flex items-center gap-1.5 disabled:opacity-40"
+                      onClick={() => {
+                        const existingSale = sales.find((s) => s.referralId === currentRef.id);
+                        if (existingSale) {
+                          setActiveNav('sales');
+                        } else {
+                          registerSale({
+                            referralId: currentRef.id,
+                            developmentId: currentRef.developmentId,
+                            unitIdentifier: 'Unidade Comercializada (Via Atendimento)',
+                            contractNumber: `CTR-${currentRef.code}`,
+                            saleValueCents: currentDev?.averageTicketCents || 85000000,
+                            commissionRatePercent: currentDev?.defaultCommissionRate || 4.0,
+                            createInitialInstallments: true,
+                          });
+                          setActiveNav('sales');
+                        }
+                      }}
+                      className="px-4 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition-colors"
                     >
-                      <Receipt className="w-4 h-4 text-linnk-flame" />
-                      <span>Registrar Venda desta Indicação</span>
+                      <Receipt className="w-4 h-4 text-white" />
+                      <span>
+                        {sales.some((s) => s.referralId === currentRef.id)
+                          ? 'Ver Venda no Financeiro'
+                          : 'Registrar Venda e Ir ao Financeiro →'}
+                      </span>
                     </button>
                   </div>
                 )}

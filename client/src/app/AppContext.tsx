@@ -1364,12 +1364,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? {
               ...r,
               status: 'VENDA_CONFIRMADA',
+              documentStatus: r.documentStatus === 'APROVADO' ? r.documentStatus : 'APROVADO',
               saleStatus: 'CONFIRMADA',
               receivementStatus: 'PENDENTE',
               payoutStatus: 'PENDENTE',
               updatedAt: now,
             }
           : r
+      )
+    );
+
+    setDocuments((prev) =>
+      prev.map((d) =>
+        d.referralId === input.referralId && d.status !== 'APROVADO'
+          ? {
+              ...d,
+              status: 'APROVADO',
+              reviewedAt: now,
+              reviewNotes: 'Aprovado automaticamente com o registro da venda confirmada.',
+            }
+          : d
       )
     );
 

@@ -3,7 +3,9 @@ import {
   AlertTriangle,
   ArrowRight,
   Building2,
+  Calculator,
   CheckCircle2,
+  DollarSign,
   Eye,
   FileCheck2,
   Filter,
@@ -19,12 +21,15 @@ import {
   X,
 } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
-import { Modality, ReferralStatus } from '../../app/types';
+import { Modality, Referral, ReferralStatus } from '../../app/types';
 import {
+  formatCentsToBRL,
   formatDateBR,
   formatDateTimeBR,
+  formatThousands,
   normalizeEmail,
   normalizePhone,
+  parseBRLToCents,
 } from '../../lib/formatters';
 import {
   AttendanceTypeBadge,
@@ -47,6 +52,8 @@ export const ReferralsView: React.FC = () => {
     selectedReferralId,
     setSelectedReferralId,
     createReferral,
+    registerSale,
+    commissionConfig,
     setActiveNav,
   } = useApp();
 
@@ -59,6 +66,18 @@ export const ReferralsView: React.FC = () => {
 
   const [showNewModal, setShowNewModal] = useState(false);
   const [popupReferralId, setPopupReferralId] = useState<string | null>(null);
+
+  // Estado do modal Registrar Venda da Indicação
+  const [saleModalRef, setSaleModalRef] = useState<Referral | null>(null);
+  const [saleUnit, setSaleUnit] = useState('');
+  const [saleContract, setSaleContract] = useState('');
+  const [saleValueInput, setSaleValueInput] = useState('');
+  const [saleCommissionRate, setSaleCommissionRate] = useState('4.0');
+
+  // Estado de venda direta no cadastro de Nova Indicação
+  const [isDirectSale, setIsDirectSale] = useState(false);
+  const [directSaleUnit, setDirectSaleUnit] = useState('Unidade 101');
+  const [directSaleValue, setDirectSaleValue] = useState('');
 
   // Estado do formulário de Nova Indicação
   const activeBrokers = brokers.filter((b) => b.active);
@@ -159,6 +178,55 @@ export const ReferralsView: React.FC = () => {
     setPopupReferralId(refId);
   };
 
+  const openRegisterSaleModal = (ref: Referral) => {
+    const dev = developments.find((d) => d.id === ref.developmentId);
+    const defaultTicket = dev?.averageTicketCents
+      ? Math.round(dev.averageTicketCents / 100)
+      : 850000;
+    setSaleModalRef(ref);
+    setSaleUnit('Unidade 101');
+    setSaleContract(`CTR-${ref.code}`);
+    setSaleValueInput(formatThousands(defaultTicket));
+    setSaleCommissionRate(String(dev?.defaultCommissionRate || 4.0));
+    setPopupReferralId(null);
+  };
+
+  const handleConfirmSaleFromModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!saleModalRef) return;
+
+    const rawDigits = saleValueInput.replace(/\D/g, '');
+    const saleCents = rawDigits ? parseInt(rawDigits, 10) * 100 : 85000000;
+    const rate = parseFloat(saleCommissionRate) || 4.0;
+
+    registerSale({
+      referralId: saleModalRef.id,
+      developmentId: saleModalRef.developmentId,
+      unitIdentifier: saleUnit.trim() || 'Unidade Comercializada',
+      contractNumber: saleContract.trim() || `CTR-${saleModalRef.code}`,
+      saleValueCents: saleCents,
+      commissionRatePercent: rate,
+      createInitialInstallments: true,
+    });
+
+    setSaleModalRef(null);
+    setActiveNav('sales');
+  };
+
+  // Pré-cálculo da comissão no modal de venda
+  const modalSaleCents = (parseInt(saleValueInput.replace(/\D/g, ''), 10) || 0) * 100;
+  const modalRate = parseFloat(saleCommissionRate) || 4.0;
+  const modalGrossCents = Math.round((modalSaleCents * modalRate) / 100);
+  const modalTaxRate = commissionConfig?.defaultTaxDeductionPercent ?? 6.0;
+  const modalTaxCents =
+    commissionConfig?.splitBase === 'LIQUIDA'
+      ? Math.round((modalGrossCents * modalTaxRate) / 100)
+      : 0;
+  const modalNetBaseCents = modalGrossCents - modalTaxCents;
+  const modalBrokerSharePercent = commissionConfig?.defaultBrokerSharePercent ?? 50;
+  const modalBrokerCents = Math.round((modalNetBaseCents * modalBrokerSharePercent) / 100);
+  const modalLinnkCents = modalNetBaseCents - modalBrokerCents;
+
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientName.trim() || !clientPhone.trim() || !brokerId || !developmentId) return;
@@ -174,12 +242,39 @@ export const ReferralsView: React.FC = () => {
       notes,
     });
 
+    if (isDirectSale) {
+      const selDev = developments.find((d) => d.id === developmentId);
+      const rawDigits = directSaleValue.replace(/\D/g, '');
+      const saleCents = rawDigits ? parseInt(rawDigits, 10) * 100 : (selDev?.averageTicketCents || 85000000);
+
+      registerSale({
+        referralId: referral.id,
+        developmentId: referral.developmentId,
+        unitIdentifier: directSaleUnit.trim() || 'Unidade Comercializada',
+        contractNumber: `CTR-${referral.code}`,
+        saleValueCents: saleCents,
+        commissionRatePercent: selDev?.defaultCommissionRate || 4.0,
+        createInitialInstallments: true,
+      });
+
+      setShowNewModal(false);
+      setClientName('');
+      setClientPhone('');
+      setClientEmail('');
+      setClientCity('');
+      setNotes('');
+      setIsDirectSale(false);
+      setActiveNav('sales');
+      return;
+    }
+
     setShowNewModal(false);
     setClientName('');
     setClientPhone('');
     setClientEmail('');
     setClientCity('');
     setNotes('');
+    setIsDirectSale(false);
     setSelectedReferralId(referral.id);
     setPopupReferralId(referral.id);
   };
@@ -361,16 +456,43 @@ export const ReferralsView: React.FC = () => {
                     </td>
 
                     <td className="py-4 px-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleOpen360(ref.id);
-                        }}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-obsidian hover:text-white text-xs font-display font-semibold transition-colors cursor-pointer"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Ficha 360º</span>
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        {sales.some((s) => s.referralId === ref.id) ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveNav('sales');
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-display font-bold border border-emerald-200 transition-colors cursor-pointer"
+                            title="Ver venda e comissões no Financeiro"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>No Financeiro</span>
+                          </button>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRegisterSaleModal(ref);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white text-xs font-display font-bold transition-colors cursor-pointer shadow-xs"
+                            title="Registrar venda desta indicação e enviar direto ao Financeiro"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span>Registrar Venda</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpen360(ref.id);
+                          }}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-obsidian hover:text-white text-xs font-display font-semibold transition-colors cursor-pointer"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Ficha 360º</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -596,18 +718,24 @@ export const ReferralsView: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    setPopupReferralId(null);
-                    setActiveNav('sales');
+                    if (selectedSale) {
+                      setPopupReferralId(null);
+                      setActiveNav('sales');
+                    } else {
+                      openRegisterSaleModal(selectedReferral);
+                    }
                   }}
-                  className="flex-1 py-2.5 px-3 rounded-xl bg-linnk-obsidian hover:bg-linnk-obsidian-800 text-white font-display font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                  className={`flex-1 py-2.5 px-3 rounded-xl font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-xs ${
+                    selectedSale
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-linnk-flame hover:bg-linnk-flame-600 text-white'
+                  }`}
                 >
-                  <Receipt className="w-4 h-4 text-linnk-flame" />
+                  <Receipt className="w-4 h-4" />
                   <span>
                     {selectedSale
                       ? 'Ver Venda & Comissão'
-                      : isBroker
-                      ? 'Comissões & Repasses'
-                      : 'Registrar Venda'}
+                      : 'Registrar Venda e Ir ao Financeiro →'}
                   </span>
                 </button>
               </div>
@@ -853,6 +981,64 @@ export const ReferralsView: React.FC = () => {
                 />
               </div>
 
+              {/* Opção para já registrar venda confirmada e enviar direto ao Financeiro */}
+              <div className="p-4 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200 space-y-3">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isDirectSale}
+                    onChange={(e) => {
+                      setIsDirectSale(e.target.checked);
+                      if (e.target.checked && !directSaleValue) {
+                        const selDev = developments.find((d) => d.id === developmentId);
+                        const defaultTicket = selDev?.averageTicketCents
+                          ? Math.round(selDev.averageTicketCents / 100)
+                          : 850000;
+                        setDirectSaleValue(formatThousands(defaultTicket));
+                      }
+                    }}
+                    className="w-4 h-4 rounded text-linnk-flame focus:ring-linnk-flame border-linnk-stone-300 cursor-pointer"
+                  />
+                  <div className="text-xs">
+                    <strong className="text-linnk-obsidian block">
+                      Venda já realizada? Registrar e enviar direto para o Financeiro
+                    </strong>
+                    <span className="text-linnk-stone-500">
+                      Gera a venda confirmada e lança os repasses no Financeiro automaticamente.
+                    </span>
+                  </div>
+                </label>
+
+                {isDirectSale && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-linnk-stone-200">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-linnk-obsidian mb-1">
+                        Identificador da Unidade *
+                      </label>
+                      <input
+                        type="text"
+                        value={directSaleUnit}
+                        onChange={(e) => setDirectSaleUnit(e.target.value)}
+                        placeholder="Ex: Unidade 101 · Vista Mar"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-linnk-obsidian mb-1">
+                        Valor da Venda (VGV em R$) *
+                      </label>
+                      <input
+                        type="text"
+                        value={directSaleValue}
+                        onChange={(e) => setDirectSaleValue(formatThousands(e.target.value))}
+                        placeholder="Ex: 850.000"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-4 border-t border-linnk-stone-200 flex items-center justify-end gap-3">
                 <button
                   type="button"
@@ -864,11 +1050,199 @@ export const ReferralsView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={activeBrokers.length === 0 || activeDevelopments.length === 0}
-                  className="px-6 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 disabled:opacity-50 text-white font-display font-bold text-xs sm:text-sm shadow-flame-sm cursor-pointer"
+                  className="px-6 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 disabled:opacity-50 text-white font-display font-bold text-xs sm:text-sm shadow-flame-sm cursor-pointer flex items-center gap-2"
                 >
-                  {liveDuplicateCheck
-                    ? 'Registrar e Enviar p/ Análise de Duplicidade'
-                    : 'Confirmar Indicação'}
+                  {isDirectSale ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Registrar Indicação e Enviar ao Financeiro →</span>
+                    </>
+                  ) : liveDuplicateCheck ? (
+                    'Registrar e Enviar p/ Análise de Duplicidade'
+                  ) : (
+                    'Confirmar Indicação'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Dedicado: Registrar Venda da Indicação */}
+      {saleModalRef && (
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-xl w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden max-h-[92vh] flex flex-col">
+            <div className="bg-linnk-obsidian text-white px-6 py-5 flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-mono uppercase tracking-widest text-linnk-flame">
+                  Gestão Financeira & Comissões
+                </span>
+                <h3 className="font-display font-bold text-xl">
+                  Registrar Venda da Indicação
+                </h3>
+              </div>
+              <button
+                onClick={() => setSaleModalRef(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
+                aria-label="Fechar"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleConfirmSaleFromModal}
+              className="p-6 overflow-y-auto space-y-4 text-sm"
+            >
+              {/* Informações da Indicação */}
+              <div className="p-4 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="text-[10px] font-mono uppercase text-linnk-stone-400 block">
+                    Cliente & Indicação
+                  </span>
+                  <strong className="font-display text-sm text-linnk-obsidian block">
+                    {clients.find((c) => c.id === saleModalRef.clientId)?.name}
+                  </strong>
+                  <span className="font-mono text-linnk-stone-500">
+                    {saleModalRef.code} · {saleModalRef.modality}
+                  </span>
+                </div>
+                <div className="sm:text-right">
+                  <span className="text-[10px] font-mono uppercase text-linnk-stone-400 block">
+                    Empreendimento & Corretor
+                  </span>
+                  <span className="font-semibold text-linnk-obsidian block">
+                    {developments.find((d) => d.id === saleModalRef.developmentId)?.name}
+                  </span>
+                  <span className="text-linnk-stone-500">
+                    {brokers.find((b) => b.id === saleModalRef.brokerId)?.name} (50%)
+                  </span>
+                </div>
+              </div>
+
+              {/* Campos da Venda */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
+                    Identificador da Unidade *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={saleUnit}
+                    onChange={(e) => setSaleUnit(e.target.value)}
+                    placeholder="Ex: Unidade 802 · Solarium"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
+                    Número do Contrato *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={saleContract}
+                    onChange={(e) => setSaleContract(e.target.value)}
+                    placeholder="Ex: CTR-2026-001"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none text-xs font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
+                    Valor da Venda (VGV em R$) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={saleValueInput}
+                    onChange={(e) => setSaleValueInput(formatThousands(e.target.value))}
+                    placeholder="Ex: 950.000"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none text-xs font-mono font-bold text-linnk-obsidian"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
+                    Comissão Acordada (%) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="1"
+                    max="15"
+                    required
+                    value={saleCommissionRate}
+                    onChange={(e) => setSaleCommissionRate(e.target.value)}
+                    placeholder="4.0"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Memória de Cálculo Prévia */}
+              <div className="p-4 rounded-2xl bg-linnk-stone-100/70 border border-linnk-stone-200/90 space-y-2 text-xs">
+                <div className="flex items-center justify-between pb-1.5 border-b border-linnk-stone-200">
+                  <span className="font-display font-bold text-xs text-linnk-obsidian flex items-center gap-1.5">
+                    <Calculator className="w-3.5 h-3.5 text-linnk-flame" />
+                    Memória de Repasse Estimada (Regra 50/50 Líquida)
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-linnk-stone-600">Comissão Bruta ({saleCommissionRate}%):</span>
+                  <strong className="font-mono text-linnk-obsidian">
+                    {formatCentsToBRL(modalGrossCents)}
+                  </strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-linnk-stone-600">Dedução NF LINNK ({modalTaxRate}%):</span>
+                  <span className="font-mono text-rose-600">
+                    - {formatCentsToBRL(modalTaxCents)}
+                  </span>
+                </div>
+                <div className="flex justify-between pt-1 border-t border-linnk-stone-200 font-semibold">
+                  <span className="text-linnk-stone-700">Base Líquida a Dividir:</span>
+                  <span className="font-mono text-linnk-obsidian">
+                    {formatCentsToBRL(modalNetBaseCents)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1.5">
+                  <div className="p-2.5 rounded-xl bg-linnk-flame-50 border border-linnk-flame-200">
+                    <span className="text-[10px] font-mono uppercase text-linnk-flame-800 block">
+                      Corretor Parceiro (50%)
+                    </span>
+                    <strong className="font-display text-sm text-linnk-flame">
+                      {formatCentsToBRL(modalBrokerCents)}
+                    </strong>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white border border-linnk-stone-200">
+                    <span className="text-[10px] font-mono uppercase text-linnk-stone-600 block">
+                      LINNK (50%)
+                    </span>
+                    <strong className="font-display text-sm text-linnk-obsidian">
+                      {formatCentsToBRL(modalLinnkCents)}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-linnk-stone-200 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSaleModalRef(null)}
+                  className="px-4 py-2.5 rounded-2xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs sm:text-sm shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Confirmar Venda e Ir para o Financeiro →</span>
                 </button>
               </div>
             </form>
