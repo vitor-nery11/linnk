@@ -933,9 +933,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const res = await SupabaseService.uploadConsentDocument(fileOrName, storageKey);
           if (res.ok && res.publicUrl) {
             fileUrl = res.publicUrl;
+          } else if (!res.ok) {
+            throw new Error(res.error || 'Erro ao realizar upload do arquivo para o servidor.');
           }
-        } catch (e) {
+        } catch (e: any) {
           console.warn('[AppContext] Erro ao enviar para Supabase Storage:', e);
+          throw e;
         }
       }
 

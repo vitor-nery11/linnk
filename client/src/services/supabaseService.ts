@@ -853,8 +853,14 @@ export const SupabaseService = {
           upsert: true,
         });
         if (fallback.error) {
-          console.warn('[SupabaseService] Erro ao enviar para storage:', error.message || fallback.error.message);
-          return { ok: false, error: error.message || fallback.error.message };
+          const isBucketNotFound =
+            error.message?.toLowerCase().includes('bucket not found') ||
+            fallback.error.message?.toLowerCase().includes('bucket not found');
+          const errorMsg = isBucketNotFound
+            ? 'O bucket "documents" não foi encontrado no Supabase Storage. É necessário criar o bucket "documents" (público) no painel do Supabase para armazenar os termos.'
+            : (fallback.error.message || error.message || 'Falha no upload do arquivo');
+          console.warn('[SupabaseService] Erro ao enviar para storage:', errorMsg);
+          return { ok: false, error: errorMsg };
         }
         const pub = supabase.storage.from('consent-terms').getPublicUrl(path);
         return { ok: true, path, publicUrl: pub.data?.publicUrl };

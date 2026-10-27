@@ -359,6 +359,21 @@ export const DocumentsView: React.FC = () => {
                       </button>
                     )}
 
+                    {doc?.status === 'RECEBIDO_AGUARDANDO_CONFERENCIA' && (
+                      <button
+                        onClick={() => {
+                          setSelectedFile(null);
+                          setUploadError('');
+                          setUploadModalReferralId(ref.id);
+                        }}
+                        className="px-4 py-2.5 rounded-2xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                        title="Substituir ou reenviar o arquivo anexado"
+                      >
+                        <Upload className="w-4 h-4 text-linnk-stone-600" />
+                        <span>Substituir Termo</span>
+                      </button>
+                    )}
+
                     {doc?.status === 'APROVADO' && (
                       <button
                         onClick={() => {
