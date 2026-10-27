@@ -27,6 +27,7 @@ import {
   normalizePhone,
 } from '../../lib/formatters';
 import {
+  AttendanceTypeBadge,
   DocumentStatusBadge,
   FinancialFlowBadge,
   ModalityBadge,
@@ -567,8 +568,8 @@ export const ReferralsView: React.FC = () => {
                         key={att.id}
                         className="p-3 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200 text-xs"
                       >
-                        <div className="flex justify-between text-[10px] font-mono text-linnk-stone-500">
-                          <span className="font-bold text-linnk-flame">{att.type}</span>
+                        <div className="flex items-center justify-between gap-2 text-[10px] font-mono text-linnk-stone-500">
+                          <AttendanceTypeBadge type={att.type} />
                           <span>{formatDateTimeBR(att.createdAt)}</span>
                         </div>
                         <div className="font-semibold text-linnk-obsidian mt-0.5">

@@ -12,10 +12,23 @@ import { useApp } from '../../app/AppContext';
 import { AttendanceType, ReferralStatus } from '../../app/types';
 import { formatDateTimeBR } from '../../lib/formatters';
 import {
+  ATTENDANCE_TYPE_LABELS,
+  AttendanceTypeBadge,
   DocumentStatusBadge,
   ModalityBadge,
   ReferralStatusBadge,
 } from '../../components/StatusBadges';
+
+const TITLE_PRESETS: Record<AttendanceType, string[]> = {
+  CONTATO_INICIAL: ['WhatsApp', 'Ligação', 'Tentativa de contato', 'Retorno de mensagem'],
+  QUALIFICACAO: ['Perfil aprovado', 'Simulação de crédito', 'Investidor', 'Primeiro imóvel'],
+  ENVIO_MATERIAL: ['Book enviado', 'Tabela de preços', 'Vídeo do decorado', 'Plantas'],
+  AGENDAMENTO_VISITA: ['Visita ao decorado', 'Visita ao stand', 'Revisita agendada'],
+  REUNIAO_PLANTAO: ['Reunião presencial', 'Alinhamento online', 'Reunião no plantão'],
+  FILA_DIA_D: ['Cadastro no Dia D', 'Reserva de unidade', 'Pasta aprovada'],
+  PROPOSTA_COMERCIAL: ['Proposta apresentada', 'Negociação de fluxo', 'Contraproposta'],
+  OBSERVACAO: ['Aguardando retorno', 'Cliente em viagem', 'Anotação geral'],
+};
 
 export const AttendancesView: React.FC = () => {
   const {
@@ -72,12 +85,17 @@ export const AttendancesView: React.FC = () => {
 
   const handleAddInteraction = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentRef || !isReleased || !canEditAttendance || !attTitle.trim()) return;
+    if (!currentRef || !isReleased || !canEditAttendance) return;
+
+    const finalTitle =
+      attTitle.trim() ||
+      ATTENDANCE_TYPE_LABELS[attType]?.defaultTitle ||
+      'Atendimento registrado';
 
     addAttendance(
       currentRef.id,
       attType,
-      attTitle.trim(),
+      finalTitle,
       attDesc.trim() ||
         (isBroker
           ? 'Atualização de atendimento registrada pelo corretor na modalidade CONECTA.'
@@ -98,10 +116,10 @@ export const AttendancesView: React.FC = () => {
     addAttendance(
       currentRef.id,
       'OBSERVACAO',
-      `Status do atendimento alterado para: ${statusLabel}`,
+      `Status: ${statusLabel}`,
       isBroker
-        ? `Alteração de status realizada diretamente pelo corretor responsável (${currentUser?.name}) na modalidade CONECTA.`
-        : `Alteração de status realizada por ${currentUser?.name}.`,
+        ? `Status atualizado pelo corretor (${currentUser?.name}) na modalidade CONECTA.`
+        : `Status atualizado por ${currentUser?.name}.`,
       targetStatus
     );
   };
@@ -406,34 +424,53 @@ export const AttendancesView: React.FC = () => {
                           onChange={(e) => setAttType(e.target.value as AttendanceType)}
                           className="w-full px-3 py-2 rounded-xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none"
                         >
-                          <option value="CONTATO_INICIAL">Contato Inicial / WhatsApp</option>
-                          <option value="QUALIFICACAO">Qualificação de Perfil</option>
-                          <option value="ENVIO_MATERIAL">Envio de Book / Tabela</option>
-                          <option value="AGENDAMENTO_VISITA">Agendamento de Visita</option>
-                          <option value="REUNIAO_PLANTAO">Reunião / Plantão Stand</option>
-                          <option value="FILA_DIA_D">Fila de Cadastro / Dia D</option>
-                          <option value="PROPOSTA_COMERCIAL">Proposta Comercial</option>
-                          <option value="OBSERVACAO">Observação de Atendimento</option>
+                          <option value="CONTATO_INICIAL">Contato</option>
+                          <option value="QUALIFICACAO">Qualificação</option>
+                          <option value="ENVIO_MATERIAL">Material</option>
+                          <option value="AGENDAMENTO_VISITA">Visita</option>
+                          <option value="REUNIAO_PLANTAO">Reunião</option>
+                          <option value="FILA_DIA_D">Dia D</option>
+                          <option value="PROPOSTA_COMERCIAL">Proposta</option>
+                          <option value="OBSERVACAO">Anotação</option>
                         </select>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
-                          Título Resumido *
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-semibold text-linnk-obsidian">
+                            Título da Interação
+                          </label>
+                          <span className="text-[10px] text-linnk-stone-400">Opcional</span>
+                        </div>
                         <input
                           type="text"
-                          required
                           value={attTitle}
                           onChange={(e) => setAttTitle(e.target.value)}
-                          placeholder="Ex.: Visita ao decorado agendada"
+                          placeholder={`Ex.: ${ATTENDANCE_TYPE_LABELS[attType]?.defaultTitle || 'Visita agendada'}`}
                           className="w-full px-3 py-2 rounded-xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none"
                         />
+                        {/* Sugestões rápidas de títulos simples */}
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {TITLE_PRESETS[attType]?.map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setAttTitle(preset)}
+                              className={`text-[10px] px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                                attTitle === preset
+                                  ? 'bg-linnk-obsidian text-white border-linnk-obsidian'
+                                  : 'bg-white text-linnk-stone-600 border-linnk-stone-200 hover:border-linnk-flame hover:text-linnk-flame'
+                              }`}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
                       </div>
 
                       <div>
                         <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
-                          Alterar Status do Atendimento (Opcional)
+                          Alterar Status (Opcional)
                         </label>
                         <select
                           value={nextStatus}
@@ -443,14 +480,10 @@ export const AttendancesView: React.FC = () => {
                           className="w-full px-3 py-2 rounded-xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none"
                         >
                           <option value="">Manter status atual</option>
-                          <option value="EM_ATENDIMENTO">Em Atendimento Ativo</option>
-                          <option value="PROPOSTA_ENVIADA">Proposta em Negociação</option>
-                          <option value="VENDA_CONFIRMADA">
-                            Encerrada com Venda (Venda Confirmada)
-                          </option>
-                          <option value="ENCERRADA_SEM_VENDA">
-                            Encerrar Indicação (Sem Venda)
-                          </option>
+                          <option value="EM_ATENDIMENTO">Em Atendimento</option>
+                          <option value="PROPOSTA_ENVIADA">Proposta Enviada</option>
+                          <option value="VENDA_CONFIRMADA">Venda Confirmada</option>
+                          <option value="ENCERRADA_SEM_VENDA">Encerrar Sem Venda</option>
                         </select>
                       </div>
                     </div>
@@ -495,9 +528,7 @@ export const AttendancesView: React.FC = () => {
                         <span className="w-3 h-3 rounded-full bg-linnk-flame border-2 border-white absolute -left-[31px] top-1.5 shadow-xs" />
                         <div className="p-4 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200">
                           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <span className="px-2.5 py-0.5 rounded-full bg-linnk-obsidian text-white font-mono text-[10px] font-bold">
-                              {item.type}
-                            </span>
+                            <AttendanceTypeBadge type={item.type} />
                             <span className="font-mono text-linnk-stone-500 text-[11px]">
                               {formatDateTimeBR(item.createdAt)} · por{' '}
                               {author?.name || 'Operador LINNK'}
