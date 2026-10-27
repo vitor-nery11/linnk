@@ -7,6 +7,7 @@ import {
   Lock,
   Mail,
   Users,
+  AlertTriangle,
 } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
 import { UserRole } from '../../app/types';
@@ -219,8 +220,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </div>
 
             {errorMsg && (
-              <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 leading-relaxed">
-                {errorMsg}
+              <div
+                role="alert"
+                className="mb-5 p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs sm:text-[13px] text-rose-800 leading-relaxed flex items-start gap-3 shadow-xs animate-fadeIn"
+              >
+                <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1 font-medium">{errorMsg}</div>
               </div>
             )}
 
