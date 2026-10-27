@@ -154,6 +154,7 @@ export interface ReferralDocument {
   GeneratedByUserId?: string;
   storageKey?: string; // Ex: "private/consent-terms/2026/LNK-2026-001-assinado.pdf"
   fileName?: string;
+  fileUrl?: string;
   receivedAt?: string;
   receivedByUserId?: string;
   reviewedAt?: string;

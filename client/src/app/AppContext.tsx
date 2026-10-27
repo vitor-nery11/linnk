@@ -123,7 +123,11 @@ interface AppContextValue {
     recipientEmail?: string,
     customMessage?: string
   ) => Promise<{ ok: boolean; error?: string; message?: string; simulated?: boolean }>;
-  uploadSignedConsentTerm: (referralId: string, fileName: string) => void;
+  uploadSignedConsentTerm: (
+    referralId: string,
+    fileOrName: File | string,
+    fileUrl?: string
+  ) => Promise<void> | void;
   reviewConsentTerm: (referralId: string, approved: boolean, reviewNotes: string) => void;
   addAttendance: (
     referralId: string,
@@ -908,11 +912,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   /**
    * Registro de recebimento do documento assinado manualmente
    */
-  const uploadSignedConsentTerm = (referralId: string, fileName: string) => {
+  const uploadSignedConsentTerm = async (
+    referralId: string,
+    fileOrName: File | string,
+    customFileUrl?: string
+  ) => {
     const now = new Date().toISOString();
     const ref = referrals.find((r) => r.id === referralId);
     if (!ref) return;
-    const storageKey = `private/consent-terms/2026/10/${ref.code}-${fileName.replace(/\s+/g, '_')}`;
+
+    const isActualFile = typeof fileOrName !== 'string' && fileOrName instanceof File;
+    const fileName = isActualFile ? fileOrName.name : fileOrName;
+    const safeName = fileName.replace(/\s+/g, '_');
+    const storageKey = `consent-terms/${ref.code}-${Date.now()}-${safeName}`;
+    let fileUrl = customFileUrl || '';
+
+    if (isActualFile) {
+      if (isSupabaseConfigured) {
+        try {
+          const res = await SupabaseService.uploadConsentDocument(fileOrName, storageKey);
+          if (res.ok && res.publicUrl) {
+            fileUrl = res.publicUrl;
+          }
+        } catch (e) {
+          console.warn('[AppContext] Erro ao enviar para Supabase Storage:', e);
+        }
+      }
+
+      if (!fileUrl && typeof window !== 'undefined' && window.URL) {
+        try {
+          fileUrl = URL.createObjectURL(fileOrName);
+        } catch (e) {
+          console.warn('Erro ao criar ObjectURL:', e);
+        }
+      }
+    }
 
     setDocuments((prev) =>
       prev.map((d) =>
@@ -922,6 +956,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               status: 'RECEBIDO_AGUARDANDO_CONFERENCIA',
               fileName,
               storageKey,
+              fileUrl: fileUrl || d.fileUrl,
               receivedAt: now,
               receivedByUserId: currentUser?.id,
             }
@@ -945,8 +980,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'DOCUMENT_RECEIVED',
       'DOCUMENT',
       referralId,
-      `Arquivo de termo assinado registrado para ${ref.code}`,
-      `Chave privada Supabase Storage: ${storageKey}. Aguardando conferência manual.`
+      `Arquivo de termo assinado anexado para ${ref.code}`,
+      `Nome do arquivo: ${fileName}. Chave de armazenamento: ${storageKey}. Aguardando conferência manual.`
     );
 
     if (isSupabaseConfigured) {

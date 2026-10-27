@@ -137,6 +137,21 @@ export function mapReferralFromDb(row: any): Referral {
 }
 
 export function mapReferralDocumentFromDb(row: any): ReferralDocument {
+  let fileUrl: string | undefined = undefined;
+  if (row.storage_key) {
+    if (
+      row.storage_key.startsWith('http://') ||
+      row.storage_key.startsWith('https://') ||
+      row.storage_key.startsWith('data:') ||
+      row.storage_key.startsWith('blob:')
+    ) {
+      fileUrl = row.storage_key;
+    } else if (isSupabaseConfigured) {
+      const pub = supabase.storage.from('documents').getPublicUrl(row.storage_key);
+      fileUrl = pub.data?.publicUrl;
+    }
+  }
+
   return {
     id: row.id,
     referralId: row.referral_id,
@@ -146,6 +161,7 @@ export function mapReferralDocumentFromDb(row: any): ReferralDocument {
     GeneratedByUserId: row.generated_by_user_id || undefined,
     storageKey: row.storage_key || undefined,
     fileName: row.file_name || undefined,
+    fileUrl,
     receivedAt: row.received_at || undefined,
     receivedByUserId: row.received_by_user_id || undefined,
     reviewedAt: row.reviewed_at || undefined,
@@ -819,6 +835,37 @@ export const SupabaseService = {
       .single();
     if (error) throw error;
     return mapReferralDocumentFromDb(data);
+  },
+
+  async uploadConsentDocument(file: File, path: string): Promise<{ ok: boolean; path?: string; publicUrl?: string; error?: string }> {
+    if (!isSupabaseConfigured) return { ok: false, error: 'Supabase não configurado' };
+    try {
+      // 1. Tenta bucket de documentos
+      const { data, error } = await supabase.storage.from('documents').upload(path, file, {
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+      if (error) {
+        // Fallback para bucket consent-terms
+        const fallback = await supabase.storage.from('consent-terms').upload(path, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+        if (fallback.error) {
+          console.warn('[SupabaseService] Erro ao enviar para storage:', error.message || fallback.error.message);
+          return { ok: false, error: error.message || fallback.error.message };
+        }
+        const pub = supabase.storage.from('consent-terms').getPublicUrl(path);
+        return { ok: true, path, publicUrl: pub.data?.publicUrl };
+      }
+
+      const pub = supabase.storage.from('documents').getPublicUrl(path);
+      return { ok: true, path, publicUrl: pub.data?.publicUrl };
+    } catch (err: any) {
+      console.warn('[SupabaseService] Exceção no upload para storage:', err);
+      return { ok: false, error: err?.message || 'Falha no upload' };
+    }
   },
 
   // --- MUTATIONS: ATTENDANCES ---

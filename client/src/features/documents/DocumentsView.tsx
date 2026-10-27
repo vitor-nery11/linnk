@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
+  ExternalLink,
   Eye,
   FileCheck2,
   FileText,
+  FileUp,
   Lock,
   Mail,
   Printer,
@@ -46,7 +48,10 @@ export const DocumentsView: React.FC = () => {
     selectedReferralId
   );
   const [uploadModalReferralId, setUploadModalReferralId] = useState<string | null>(null);
-  const [fileNameInput, setFileNameInput] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [reviewNotesMap, setReviewNotesMap] = useState<Record<string, string>>({});
 
   // Estados para modal de envio por e-mail (Resend)
@@ -84,11 +89,30 @@ export const DocumentsView: React.FC = () => {
     ? documents.find((d) => d.referralId === previewReferral.id)
     : null;
 
-  const handleUploadConfirm = (e: React.FormEvent) => {
+  const handleUploadConfirm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadModalReferralId || !fileNameInput.trim()) return;
-    uploadSignedConsentTerm(uploadModalReferralId, fileNameInput.trim());
-    setUploadModalReferralId(null);
+    if (!uploadModalReferralId) return;
+    if (!selectedFile) {
+      setUploadError('Por favor, selecione um arquivo (PDF ou imagem) do termo assinado.');
+      return;
+    }
+
+    if (selectedFile.size > 15 * 1024 * 1024) {
+      setUploadError('O arquivo selecionado é muito grande. O limite máximo permitido é 15 MB.');
+      return;
+    }
+
+    try {
+      setIsUploading(true);
+      setUploadError('');
+      await uploadSignedConsentTerm(uploadModalReferralId, selectedFile);
+      setUploadModalReferralId(null);
+      setSelectedFile(null);
+    } catch (err: any) {
+      setUploadError(err.message || 'Erro ao realizar upload do arquivo.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const emailModalReferral = referrals.find((r) => r.id === emailModalReferralId) || null;
@@ -248,9 +272,23 @@ export const DocumentsView: React.FC = () => {
                     </strong>
                   </span>
                   {doc?.fileName && (
-                    <span className="font-mono text-emerald-700">
-                      Arquivo: {doc.fileName}
-                    </span>
+                    <a
+                      href={doc.fileUrl || '#'}
+                      target={doc.fileUrl ? '_blank' : undefined}
+                      rel="noopener noreferrer"
+                      onClick={(e) => {
+                        if (!doc.fileUrl) {
+                          e.preventDefault();
+                          alert(`Arquivo registrado: ${doc.fileName}`);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 font-mono text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors cursor-pointer"
+                      title={doc.fileUrl ? 'Clique para visualizar ou baixar o termo assinado' : 'Termo assinado anexado'}
+                    >
+                      <FileCheck2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Anexo: {doc.fileName}</span>
+                      {doc.fileUrl && <ExternalLink className="w-3 h-3 text-emerald-600 opacity-70" />}
+                    </a>
                   )}
                   {doc?.sentAt && (
                     <span className="inline-flex items-center gap-1 font-mono text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
@@ -310,12 +348,11 @@ export const DocumentsView: React.FC = () => {
                       doc?.status === 'REJEITADO') && (
                       <button
                         onClick={() => {
-                          setFileNameInput(
-                            `termo_consentimento_${ref.code.toLowerCase()}_assinado.pdf`
-                          );
+                          setSelectedFile(null);
+                          setUploadError('');
                           setUploadModalReferralId(ref.id);
                         }}
-                        className="px-4 py-2.5 rounded-2xl bg-linnk-obsidian hover:bg-linnk-obsidian-800 text-white font-display font-bold text-xs flex items-center justify-center gap-1.5"
+                        className="px-4 py-2.5 rounded-2xl bg-linnk-obsidian hover:bg-linnk-obsidian-800 text-white font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <Upload className="w-4 h-4 text-linnk-flame" />
                         <span>2. Anexar Termo Assinado</span>
@@ -328,7 +365,7 @@ export const DocumentsView: React.FC = () => {
                           setSelectedReferralId(ref.id);
                           setActiveNav('attendances');
                         }}
-                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs flex items-center justify-center gap-1.5"
+                        className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                       >
                         <ShieldCheck className="w-4 h-4" />
                         <span>Ir p/ Atendimento Liberado</span>
@@ -341,11 +378,36 @@ export const DocumentsView: React.FC = () => {
               {/* Painel Inline de Conferência Manual quando RECEBIDO_AGUARDANDO_CONFERENCIA */}
               {doc?.status === 'RECEBIDO_AGUARDANDO_CONFERENCIA' &&
                 (isBroker ? (
-                  <div className="px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium">
-                    Termo assinado enviado · Aguardando conferência da equipe LINNK
+                  <div className="px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-1.5">
+                      <FileCheck2 className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Termo assinado enviado · Aguardando conferência</span>
+                    </div>
+                    {doc.fileUrl && (
+                      <a
+                        href={doc.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-amber-900 underline hover:text-amber-700 text-xs shrink-0"
+                      >
+                        <span>Abrir anexo</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
                   </div>
                 ) : (
-                  <div className="w-full lg:w-auto pt-4 lg:pt-0 border-t lg:border-t-0 border-linnk-stone-200 flex flex-col gap-2 sm:min-w-[300px]">
+                  <div className="w-full lg:w-auto pt-4 lg:pt-0 border-t lg:border-t-0 border-linnk-stone-200 flex flex-col gap-2 sm:min-w-[320px]">
+                    {doc?.fileUrl && (
+                      <a
+                        href={doc.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Visualizar Arquivo Anexado</span>
+                      </a>
+                    )}
                     <input
                       type="text"
                       value={reviewNotesMap[ref.id] || ''}
@@ -355,7 +417,7 @@ export const DocumentsView: React.FC = () => {
                           [ref.id]: e.target.value,
                         }))
                       }
-                      placeholder="Parecer de conferência da assinatura manual..."
+                      placeholder="Parecer de conferência da assinatura..."
                       className="px-3 py-2 rounded-xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none"
                     />
                     <div className="flex gap-2">
@@ -365,10 +427,10 @@ export const DocumentsView: React.FC = () => {
                             ref.id,
                             true,
                             reviewNotesMap[ref.id] ||
-                              'Assinatura manual conferida e validada. Liberado para atendimento.'
+                              'Assinatura conferida e validada. Liberado para atendimento.'
                           )
                         }
-                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs flex items-center justify-center gap-1"
+                        className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs flex items-center justify-center gap-1 cursor-pointer shadow-xs"
                       >
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>3. Aprovar & Liberar</span>
@@ -382,7 +444,7 @@ export const DocumentsView: React.FC = () => {
                               'Assinatura ilegível ou documento incompleto.'
                           )
                         }
-                        className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-display font-bold text-xs flex items-center justify-center gap-1"
+                        className="py-2 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-display font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
                       >
                         <XCircle className="w-3.5 h-3.5" />
                         <span>Rejeitar</span>
@@ -396,52 +458,154 @@ export const DocumentsView: React.FC = () => {
       )}
       </div>
 
-      {/* Modal de Upload Privado (Supabase Storage Key Metadata) */}
+      {/* Modal de Anexar Termo Assinado Real */}
       {uploadModalReferralId && (
         <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 no-print">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-linnk-stone-300 shadow-obsidian">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display font-bold text-lg text-linnk-obsidian">
-                Registrar Recebimento de Termo Assinado
-              </h3>
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 border border-linnk-stone-300 shadow-obsidian space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-50 text-linnk-flame border border-orange-200 flex items-center justify-center shrink-0">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-lg text-linnk-obsidian leading-tight">
+                    Anexar Termo Assinado
+                  </h3>
+                  <p className="text-xs text-linnk-stone-600">
+                    Protocolo:{' '}
+                    <span className="font-mono font-bold text-linnk-obsidian">
+                      {referrals.find((r) => r.id === uploadModalReferralId)?.code}
+                    </span>
+                  </p>
+                </div>
+              </div>
               <button
-                onClick={() => setUploadModalReferralId(null)}
-                className="p-1.5 rounded-xl bg-linnk-stone-100"
+                onClick={() => {
+                  setUploadModalReferralId(null);
+                  setSelectedFile(null);
+                  setUploadError('');
+                }}
+                className="p-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-stone-600 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-xs text-linnk-stone-600 mb-4 leading-relaxed">
-              O cliente assina o documento e a equipe LINNK armazena o PDF
-              em bucket privado do <strong>Supabase Storage</strong>, guardando no banco
-              os metadados e a chave segura do arquivo.
-            </p>
-            <form onSubmit={handleUploadConfirm} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-linnk-obsidian mb-1">
-                  Nome do Arquivo PDF / Imagem Recebida
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={fileNameInput}
-                  onChange={(e) => setFileNameInput(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 text-sm font-mono focus:border-linnk-flame focus:outline-none"
-                />
+
+            {uploadError && (
+              <div
+                role="alert"
+                className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2.5 font-medium animate-fadeIn"
+              >
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{uploadError}</span>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+            )}
+
+            <form onSubmit={handleUploadConfirm} className="space-y-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,image/png,image/jpeg,image/jpg"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setSelectedFile(file);
+                    setUploadError('');
+                  }
+                }}
+                className="hidden"
+              />
+
+              {!selectedFile ? (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      setSelectedFile(file);
+                      setUploadError('');
+                    }
+                  }}
+                  className="border-2 border-dashed border-linnk-stone-300 hover:border-linnk-flame rounded-3xl p-8 text-center cursor-pointer transition-colors bg-linnk-stone-50/60 hover:bg-orange-50/30 flex flex-col items-center justify-center gap-3 group"
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white border border-linnk-stone-200 group-hover:border-orange-200 group-hover:scale-105 transition-all flex items-center justify-center text-linnk-stone-400 group-hover:text-linnk-flame shadow-xs">
+                    <FileUp className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-semibold text-linnk-obsidian group-hover:text-linnk-flame">
+                      Clique para selecionar o arquivo
+                    </span>
+                    <span className="text-xs text-linnk-stone-500 block mt-0.5">
+                      ou arraste o documento assinado até aqui
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-mono text-linnk-stone-400">
+                    Formatos aceitos: PDF, PNG, JPG (até 15 MB)
+                  </span>
+                </div>
+              ) : (
+                <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                      <FileCheck2 className="w-5 h-5" />
+                    </div>
+                    <div className="truncate">
+                      <p className="text-xs font-semibold text-emerald-950 truncate font-mono">
+                        {selectedFile.name}
+                      </p>
+                      <p className="text-[11px] text-emerald-700 font-mono">
+                        {(selectedFile.size / 1024).toFixed(0)} KB · Arquivo selecionado
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFile(null);
+                      if (fileInputRef.current) fileInputRef.current.value = '';
+                    }}
+                    className="text-xs font-semibold text-rose-600 hover:text-rose-800 shrink-0 px-2.5 py-1 rounded-lg hover:bg-rose-50 cursor-pointer"
+                  >
+                    Trocar arquivo
+                  </button>
+                </div>
+              )}
+
+              <p className="text-[11px] text-linnk-stone-500 leading-relaxed">
+                Ao anexar o arquivo real do termo assinado, o documento é registrado e enviado para a esteira de conferência manual para liberar o atendimento.
+              </p>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-linnk-stone-200">
                 <button
                   type="button"
-                  onClick={() => setUploadModalReferralId(null)}
-                  className="px-4 py-2 rounded-xl bg-linnk-stone-100 text-xs font-display font-semibold"
+                  onClick={() => {
+                    setUploadModalReferralId(null);
+                    setSelectedFile(null);
+                    setUploadError('');
+                  }}
+                  disabled={isUploading}
+                  className="px-4 py-2.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-xs font-display font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-linnk-flame text-white text-xs font-display font-bold"
+                  disabled={!selectedFile || isUploading}
+                  className="px-5 py-2.5 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white text-xs font-display font-bold flex items-center gap-2 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed shadow-flame-sm"
                 >
-                  Salvar no Storage & Enviar p/ Conferência
+                  {isUploading ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Anexando termo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Confirmar & Anexar Termo</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>
