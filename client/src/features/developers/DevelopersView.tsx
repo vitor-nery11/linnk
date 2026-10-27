@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Building, Edit3, Lock, Mail, Phone, Plus, Power, X } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
 import { Developer } from '../../app/types';
+import { formatCNPJ } from '../../lib/formatters';
 
 export const DevelopersView: React.FC = () => {
   const {
@@ -43,7 +44,7 @@ export const DevelopersView: React.FC = () => {
     setEditingDev(d);
     setName(d.name);
     setLegalName(d.legalName);
-    setCnpj(d.cnpj);
+    setCnpj(formatCNPJ(d.cnpj));
     setCity(d.city);
     setContactName(d.contactName);
     setContactEmail(d.contactEmail);
@@ -131,7 +132,7 @@ export const DevelopersView: React.FC = () => {
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono text-xs text-linnk-stone-500">
-                    CNPJ: {dv.cnpj}
+                    CNPJ: {formatCNPJ(dv.cnpj) || dv.cnpj}
                   </span>
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
@@ -228,8 +229,10 @@ export const DevelopersView: React.FC = () => {
                   <input
                     type="text"
                     required
+                    placeholder="00.000.000/0000-00"
+                    maxLength={18}
                     value={cnpj}
-                    onChange={(e) => setCnpj(e.target.value)}
+                    onChange={(e) => setCnpj(formatCNPJ(e.target.value))}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 font-mono"
                   />
                 </div>

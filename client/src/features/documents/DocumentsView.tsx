@@ -15,7 +15,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
-import { formatDateBR, formatDateTimeBR } from '../../lib/formatters';
+import { formatDateBR, formatDateTimeBR, formatCNPJ } from '../../lib/formatters';
 import {
   DocumentStatusBadge,
   ModalityBadge,
@@ -808,7 +808,7 @@ export const DocumentsView: React.FC = () => {
                           {previewDeveloper?.legalName || previewDeveloper?.name || '—'}
                         </div>
                         <div className="font-mono text-[10px] text-linnk-stone-600">
-                          CNPJ: {previewDeveloper?.cnpj || '—'}
+                          CNPJ: {formatCNPJ(previewDeveloper?.cnpj) || previewDeveloper?.cnpj || '—'}
                         </div>
                       </div>
                       <div className="p-2.5 border-b sm:border-b-0 sm:border-r border-linnk-stone-300">
