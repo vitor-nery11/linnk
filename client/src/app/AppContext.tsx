@@ -18,6 +18,7 @@ import {
   ReferralDocument,
   ReferralStatus,
   Sale,
+  SaleStatus,
   User,
   UserRole,
 } from './types';
@@ -237,6 +238,69 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { setLocalStorage('linnk_users', users); }, [users]);
   useEffect(() => { setLocalStorage('linnk_audit_logs', auditLogs); }, [auditLogs]);
   useEffect(() => { setLocalStorage('linnk_comm_config', commissionConfig); }, [commissionConfig]);
+
+  // Sincronização e migração garantida para o cliente Marcelo Scher e seus dados financeiros
+  useEffect(() => {
+    // 1. Garantir cliente Marcelo Scher em clients
+    setClients((prev) => {
+      const hasScher = prev.some(
+        (c) => c.id === 'cli-scher' || c.name.toLowerCase().includes('scher')
+      );
+      if (!hasScher) {
+        const scherClient = INITIAL_CLIENTS.find((c) => c.id === 'cli-scher');
+        return scherClient ? [scherClient, ...prev] : prev;
+      }
+      return prev;
+    });
+
+    // 2. Garantir indicação ref-1 associada a Marcelo Scher
+    setReferrals((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        if (r.id === 'ref-1' && r.clientId !== 'cli-scher') {
+          changed = true;
+          return {
+            ...r,
+            clientId: 'cli-scher',
+            status: 'VENDA_CONFIRMADA' as ReferralStatus,
+            saleStatus: 'CONFIRMADA' as SaleStatus,
+          };
+        }
+        return r;
+      });
+      return changed ? next : prev;
+    });
+
+    // 3. Garantir venda no Financeiro para o cliente Marcelo Scher sem texto legado de Torre Mar
+    setSales((prev) => {
+      if (!prev || prev.length === 0) {
+        return INITIAL_SALES;
+      }
+      let changed = false;
+      const next = prev.map((s) => {
+        if (s.unitIdentifier.includes('Torre Mar') || s.id === 'sale-1') {
+          changed = true;
+          return {
+            ...s,
+            referralId: 'ref-1',
+            unitIdentifier: s.unitIdentifier.includes('Torre Mar')
+              ? 'Unidade 802 · Solarium Vista Mar'
+              : s.unitIdentifier,
+          };
+        }
+        return s;
+      });
+      return changed ? next : prev;
+    });
+
+    // 4. Garantir transações financeiras para a venda se estiverem vazias
+    setTransactions((prev) => {
+      if (!prev || prev.length === 0) {
+        return INITIAL_TRANSACTIONS;
+      }
+      return prev;
+    });
+  }, []);
 
   // Helper para gravação simultânea de logs de auditoria (local + Supabase)
   const appendAudit = (
