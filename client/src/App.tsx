@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppProvider, useApp } from './app/AppContext';
+import { BrandLogo } from './components/BrandLogo';
 import { SidebarLayout } from './components/SidebarLayout';
 import { LoginScreen } from './features/auth/LoginScreen';
 import { BrokerRegisterScreen } from './features/auth/BrokerRegisterScreen';
@@ -24,12 +25,15 @@ const AppRouter: React.FC = () => {
 
   if (isInitialLoading) {
     return (
-      <div className="min-h-screen bg-[#080605] flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-3 border-orange-500/20 border-t-[#f95721] rounded-full animate-spin" />
-          <p className="text-xs text-neutral-400 font-medium tracking-wide">
-            Carregando LINNK...
-          </p>
+      <div className="min-h-screen bg-[#080605] flex flex-col items-center justify-center p-4 selection:bg-linnk-flame selection:text-white">
+        <div className="flex flex-col items-center gap-6">
+          <BrandLogo variant="dark" size="lg" />
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-3 border-orange-500/20 border-t-[#f95721] rounded-full animate-spin" />
+            <p className="text-xs text-neutral-400 font-medium tracking-wide">
+              Carregando LINNK...
+            </p>
+          </div>
         </div>
       </div>
     );
