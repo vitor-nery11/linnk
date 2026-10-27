@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  AlertTriangle,
   Award,
   Building2,
   CheckCircle2,
@@ -29,7 +30,7 @@ export const DevelopmentsView: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingDev, setEditingDev] = useState<Development | null>(null);
 
-  const [developerId, setDeveloperId] = useState(developers[0]?.id || '');
+  const [developerId, setDeveloperId] = useState('');
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
@@ -39,6 +40,7 @@ export const DevelopmentsView: React.FC = () => {
     useState<Development['constructionStatus']>('LANCAMENTO');
   const [defaultCommissionRate, setDefaultCommissionRate] = useState('4.0');
   const [averageTicketInput, setAverageTicketInput] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   const canEdit =
     currentUser?.role === 'ADMIN' ||
@@ -46,7 +48,7 @@ export const DevelopmentsView: React.FC = () => {
 
   const openCreate = () => {
     setEditingDev(null);
-    setDeveloperId(developers[0]?.id || '');
+    setDeveloperId(developers.length === 1 ? developers[0].id : '');
     setName('');
     setCity('');
     setNeighborhood('');
@@ -55,6 +57,7 @@ export const DevelopmentsView: React.FC = () => {
     setConstructionStatus('LANCAMENTO');
     setDefaultCommissionRate('4.0');
     setAverageTicketInput('');
+    setErrorMsg('');
     setShowModal(true);
   };
 
@@ -69,12 +72,61 @@ export const DevelopmentsView: React.FC = () => {
     setConstructionStatus(d.constructionStatus);
     setDefaultCommissionRate(String(d.defaultCommissionRate));
     setAverageTicketInput(formatThousands(Math.round(d.averageTicketCents / 100)));
+    setErrorMsg('');
     setShowModal(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!canEdit || !name.trim()) return;
+    setErrorMsg('');
+
+    if (!canEdit) {
+      setErrorMsg('Você não possui permissão para salvar empreendimentos.');
+      return;
+    }
+
+    if (!name.trim()) {
+      setErrorMsg('Preencha o Nome do Empreendimento.');
+      return;
+    }
+
+    if (!developerId) {
+      setErrorMsg('Selecione a Incorporadora Responsável.');
+      return;
+    }
+
+    if (!city.trim()) {
+      setErrorMsg('Preencha a Cidade do empreendimento.');
+      return;
+    }
+
+    if (!neighborhood.trim()) {
+      setErrorMsg('Preencha o Bairro / Local.');
+      return;
+    }
+
+    if (!constructionStatus) {
+      setErrorMsg('Selecione o Estágio do Produto.');
+      return;
+    }
+
+    const rate = parseFloat(defaultCommissionRate);
+    if (!defaultCommissionRate || isNaN(rate) || rate <= 0) {
+      setErrorMsg('Informe uma Taxa de Comissão Padrão válida (maior que 0).');
+      return;
+    }
+
+    const ticket = parseBRLToCents(averageTicketInput);
+    if (!averageTicketInput.trim() || ticket <= 0) {
+      setErrorMsg('Informe o valor do Ticket Médio estimado.');
+      return;
+    }
+
+    if (!incorporationRegistry.trim()) {
+      setErrorMsg('Informe o Registro de Incorporação e Cartório.');
+      return;
+    }
+
     saveDevelopment(
       {
         developerId,
@@ -84,8 +136,8 @@ export const DevelopmentsView: React.FC = () => {
         incorporationRegistry: incorporationRegistry.trim(),
         affectationPatrimony,
         constructionStatus,
-        defaultCommissionRate: parseFloat(defaultCommissionRate) || 4.0,
-        averageTicketCents: parseBRLToCents(averageTicketInput) || 0,
+        defaultCommissionRate: rate,
+        averageTicketCents: ticket,
         linnkSealVerified: true,
         active: editingDev ? editingDev.active : true,
       },
@@ -256,6 +308,15 @@ export const DevelopmentsView: React.FC = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
+            {errorMsg && (
+              <div
+                role="alert"
+                className="mx-6 mt-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-start gap-2.5 animate-fadeIn font-medium"
+              >
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="p-6 space-y-4 text-sm">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
@@ -266,7 +327,10 @@ export const DevelopmentsView: React.FC = () => {
                     type="text"
                     required
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     placeholder="Ex.: Brisa do Atlântico Residence"
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
                   />
@@ -276,8 +340,12 @@ export const DevelopmentsView: React.FC = () => {
                     Incorporadora Responsável *
                   </label>
                   <select
+                    required
                     value={developerId}
-                    onChange={(e) => setDeveloperId(e.target.value)}
+                    onChange={(e) => {
+                      setDeveloperId(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     disabled={developers.length === 0}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 disabled:opacity-60"
                   >
@@ -285,7 +353,7 @@ export const DevelopmentsView: React.FC = () => {
                       <option value="">Nenhuma incorporadora cadastrada</option>
                     ) : (
                       <>
-                        <option value="">Selecione uma incorporadora</option>
+                        <option value="">Selecione uma incorporadora *</option>
                         {developers.map((dv) => (
                           <option key={dv.id} value={dv.id}>
                             {dv.name}
@@ -301,30 +369,41 @@ export const DevelopmentsView: React.FC = () => {
                     type="text"
                     required
                     value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                    onChange={(e) => {
+                      setCity(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder="Ex: Ilhéus"
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold mb-1">Bairro / Local</label>
+                  <label className="block text-xs font-semibold mb-1">Bairro / Local *</label>
                   <input
                     type="text"
+                    required
                     value={neighborhood}
-                    onChange={(e) => setNeighborhood(e.target.value)}
+                    onChange={(e) => {
+                      setNeighborhood(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder="Ex: Praia do Sul"
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold mb-1">
-                    Estágio do Produto
+                    Estágio do Produto *
                   </label>
                   <select
+                    required
                     value={constructionStatus}
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setConstructionStatus(
                         e.target.value as Development['constructionStatus']
-                      )
-                    }
+                      );
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
                   >
                     <option value="PRE_LANCAMENTO">Pré-Lançamento</option>
@@ -335,36 +414,51 @@ export const DevelopmentsView: React.FC = () => {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold mb-1">
-                    Taxa Comissão Padrão (%)
+                    Taxa Comissão Padrão (%) *
                   </label>
                   <input
                     type="number"
+                    required
+                    min="0.1"
                     step="0.1"
                     value={defaultCommissionRate}
-                    onChange={(e) => setDefaultCommissionRate(e.target.value)}
+                    onChange={(e) => {
+                      setDefaultCommissionRate(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
+                    placeholder="Ex: 4.0"
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 font-mono"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold mb-1">
-                    Ticket Médio (R$)
+                    Ticket Médio (R$) *
                   </label>
                   <input
                     type="text"
+                    required
                     placeholder="Ex: 500.000"
                     value={averageTicketInput}
-                    onChange={(e) => setAverageTicketInput(formatThousands(e.target.value))}
+                    onChange={(e) => {
+                      setAverageTicketInput(formatThousands(e.target.value));
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 font-mono"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold mb-1">
-                    Registro de Incorporação e Cartório
+                    Registro de Incorporação e Cartório *
                   </label>
                   <input
                     type="text"
+                    required
+                    placeholder="Ex: R-3 da Matrícula 45.890 - 1º CRI"
                     value={incorporationRegistry}
-                    onChange={(e) => setIncorporationRegistry(e.target.value)}
+                    onChange={(e) => {
+                      setIncorporationRegistry(e.target.value);
+                      if (errorMsg) setErrorMsg('');
+                    }}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 font-mono"
                   />
                 </div>
@@ -398,13 +492,14 @@ export const DevelopmentsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-xl bg-linnk-stone-100 text-xs font-display font-semibold"
+                  className="px-4 py-2 rounded-xl bg-linnk-stone-100 text-xs font-display font-semibold cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-linnk-flame text-white text-xs font-display font-bold"
+                  disabled={developers.length === 0}
+                  className="px-5 py-2 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white text-xs font-display font-bold disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                 >
                   Salvar Empreendimento
                 </button>
