@@ -402,43 +402,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { ok: false, error: 'Supabase não está configurado no ambiente.' };
     }
 
-    // 1. Tentar autenticação via Supabase Auth
-    let authRes: { ok: boolean; error?: string; session?: any; user?: any } =
-      await SupabaseService.signIn(cleanEmail, password);
+    // 1. Tentar autenticação via Supabase Auth (sem auto-cadastro)
+    const authRes = await SupabaseService.signIn(cleanEmail, password);
 
-    // Se o usuário não existir no Supabase Auth, tentar auto-cadastro
-    if (
-      !authRes.ok &&
-      (authRes.error?.toLowerCase().includes('invalid login credentials') ||
-        authRes.error?.toLowerCase().includes('user not found'))
-    ) {
-      const prefix = cleanEmail.split('@')[0] || 'Usuário';
-      const formattedName = prefix
-        .split(/[._-]+/)
-        .filter(Boolean)
-        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-        .join(' ');
-
-      const signUpRes = await SupabaseService.signUp(
-        cleanEmail,
-        password,
-        formattedName || 'Usuário LINNK',
-        role
-      );
-
-      if (signUpRes.ok) {
-        if (!signUpRes.session) {
-          return {
-            ok: false,
-            error:
-              'Usuário cadastrado com sucesso! Confirme seu e-mail ou desative "Confirm email" no painel do Supabase (Auth > Providers > Email) para login imediato.',
-          };
-        }
-        authRes = signUpRes;
-      } else {
-        return { ok: false, error: authRes.error || signUpRes.error };
-      }
-    } else if (!authRes.ok) {
+    if (!authRes.ok) {
       if (authRes.error?.toLowerCase().includes('email not confirmed')) {
         return {
           ok: false,
@@ -446,18 +413,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             'E-mail não confirmado. Verifique seu e-mail ou desative "Confirm email" em Authentication > Providers > Email no painel do Supabase.',
         };
       }
+      if (
+        authRes.error?.toLowerCase().includes('invalid login credentials') ||
+        authRes.error?.toLowerCase().includes('user not found')
+      ) {
+        if (role === 'ADMIN') {
+          return {
+            ok: false,
+            error:
+              'Credenciais inválidas. Contas de Administrador são restritas e criadas exclusivamente pelo desenvolvedor.',
+          };
+        }
+        if (role === 'OPERATOR') {
+          return {
+            ok: false,
+            error:
+              'Credenciais inválidas. Contas de Operador são restritas e criadas exclusivamente pelo desenvolvedor.',
+          };
+        }
+        return {
+          ok: false,
+          error:
+            'E-mail ou senha incorretos. Novos corretores parceiros devem realizar o cadastro pelo botão "Cadastre-se como Corretor Parceiro".',
+        };
+      }
       return { ok: false, error: authRes.error };
     }
 
-    // Autenticação bem sucedida: buscar usuário e sincronizar base diretamente do Supabase
+    // 2. Buscar perfil no Supabase e validar estritamente o papel selecionado
     const sessionUser = await SupabaseService.getCurrentSessionUser();
-    if (sessionUser) {
-      applyAuthenticatedUser(sessionUser);
-      await loadRemoteData(true);
-      return { ok: true };
+    if (!sessionUser) {
+      await SupabaseService.signOut();
+      return { ok: false, error: 'Falha ao recuperar perfil autenticado no Supabase.' };
     }
 
-    return { ok: false, error: 'Falha ao recuperar perfil autenticado no Supabase.' };
+    // Operador e Administrador não podem ser acessados por contas sem esses privilégios
+    if (role === 'ADMIN' && sessionUser.role !== 'ADMIN') {
+      await SupabaseService.signOut();
+      return {
+        ok: false,
+        error:
+          'Acesso negado: sua conta não possui privilégios de Administrador. Contas administrativas são criadas exclusivamente pelo desenvolvedor.',
+      };
+    }
+
+    if (role === 'OPERATOR' && sessionUser.role !== 'OPERATOR' && sessionUser.role !== 'ADMIN') {
+      await SupabaseService.signOut();
+      return {
+        ok: false,
+        error:
+          'Acesso negado: sua conta não possui privilégios de Operador. Contas de operador são criadas exclusivamente pelo desenvolvedor.',
+      };
+    }
+
+    if (!sessionUser.active) {
+      await SupabaseService.signOut();
+      return {
+        ok: false,
+        error: 'Esta conta de usuário está inativa. Solicite suporte ao Administrador.',
+      };
+    }
+
+    applyAuthenticatedUser(sessionUser);
+    await loadRemoteData(true);
+    return { ok: true };
   };
 
   const logout = async () => {

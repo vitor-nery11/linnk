@@ -20,12 +20,12 @@ const ROLE_OPTIONS: {
   {
     role: 'ADMIN',
     label: 'Administrador',
-    shortDesc: 'Gestão global da plataforma, regras de comissão, financeiro e auditoria.',
+    shortDesc: 'Acesso restrito à gestão global. Contas criadas exclusivamente pelo desenvolvedor.',
   },
   {
     role: 'OPERATOR',
     label: 'Operador',
-    shortDesc: 'Gestão de contratos, esteira de propostas e atendimento a clientes.',
+    shortDesc: 'Acesso restrito a contratos e esteira. Contas criadas exclusivamente pelo desenvolvedor.',
   },
   {
     role: 'BROKER',
@@ -397,8 +397,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </button>
               </div>
 
-              {/* Botão e Chamada de Cadastro de Corretor */}
-              {onNavigateToRegister && (
+              {/* Botão e Chamada de Cadastro de Corretor (apenas no perfil Corretor) */}
+              {onNavigateToRegister && selectedRole === 'BROKER' && (
                 <div className="pt-4 border-t border-gray-100 flex flex-col items-center gap-1.5 text-center">
                   <p className="text-[12.5px] text-gray-500">
                     É corretor imobiliário e quer ser nosso parceiro?
@@ -411,6 +411,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <span>Cadastre-se como Corretor Parceiro</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
+                </div>
+              )}
+
+              {selectedRole !== 'BROKER' && (
+                <div className="pt-4 border-t border-gray-100 text-center">
+                  <p className="text-[12px] text-gray-400">
+                    Contas de {activeRoleMeta.label} são criadas exclusivamente pela equipe de desenvolvimento.
+                  </p>
                 </div>
               )}
             </form>
