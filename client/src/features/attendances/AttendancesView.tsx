@@ -41,7 +41,7 @@ export const AttendancesView: React.FC = () => {
   }, [referrals, isBroker, currentUser?.brokerId]);
 
   const [activeId, setActiveId] = useState<string>(
-    selectedReferralId || visibleReferrals[0]?.id || 'ref-1'
+    selectedReferralId || visibleReferrals[0]?.id || ''
   );
   const [attType, setAttType] = useState<AttendanceType>('REUNIAO_PLANTAO');
   const [attTitle, setAttTitle] = useState('');
@@ -150,69 +150,87 @@ export const AttendancesView: React.FC = () => {
             </h3>
           </div>
           <div className="divide-y divide-linnk-stone-200 max-h-[680px] overflow-y-auto">
-            {visibleReferrals.map((ref) => {
-              const cli = clients.find((c) => c.id === ref.clientId);
-              const brk = brokers.find((b) => b.id === ref.brokerId);
-              const dev = developments.find((d) => d.id === ref.developmentId);
-              const selected = currentRef?.id === ref.id;
-              const approved = ref.documentStatus === 'APROVADO';
+            {visibleReferrals.length === 0 ? (
+              <div className="p-8 text-center text-xs text-linnk-stone-500">
+                Nenhuma indicação cadastrada para atendimento.
+              </div>
+            ) : (
+              visibleReferrals.map((ref) => {
+                const cli = clients.find((c) => c.id === ref.clientId);
+                const brk = brokers.find((b) => b.id === ref.brokerId);
+                const dev = developments.find((d) => d.id === ref.developmentId);
+                const selected = currentRef?.id === ref.id;
+                const approved = ref.documentStatus === 'APROVADO';
 
-              return (
-                <button
-                  key={ref.id}
-                  onClick={() => {
-                    setActiveId(ref.id);
-                    setSelectedReferralId(ref.id);
-                  }}
-                  className={`w-full text-left p-4 transition-colors ${
-                    selected ? 'bg-linnk-flame-50/80' : 'hover:bg-linnk-stone-50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-mono text-xs font-bold text-linnk-flame">
-                      {ref.code}
-                    </span>
-                    {approved ? (
-                      <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                        Liberada
+                return (
+                  <button
+                    key={ref.id}
+                    onClick={() => {
+                      setActiveId(ref.id);
+                      setSelectedReferralId(ref.id);
+                    }}
+                    className={`w-full text-left p-4 transition-colors ${
+                      selected ? 'bg-linnk-flame-50/80' : 'hover:bg-linnk-stone-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="font-mono text-xs font-bold text-linnk-flame">
+                        {ref.code}
                       </span>
-                    ) : (
-                      <span className="text-[10px] font-mono font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
-                        <Lock className="w-2.5 h-2.5" /> Aguardando Termo
-                      </span>
-                    )}
-                  </div>
-                  <div className="font-display font-bold text-sm text-linnk-obsidian">
-                    {cli?.name}
-                  </div>
-                  <div className="text-xs text-linnk-stone-500 mt-0.5 truncate">
-                    {dev?.name} {!isBroker && `· Corretor: ${brk?.name}`}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
-                    <div className="flex flex-wrap gap-1.5">
-                      <ModalityBadge modality={ref.modality} />
-                      <ReferralStatusBadge status={ref.status} />
+                      {approved ? (
+                        <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          Liberada
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 flex items-center gap-1">
+                          <Lock className="w-2.5 h-2.5" /> Aguardando Termo
+                        </span>
+                      )}
                     </div>
-                    {isBroker && (
-                      <span
-                        className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded ${
-                          ref.modality === 'CONECTA'
-                            ? 'bg-linnk-obsidian text-white'
-                            : 'bg-linnk-stone-100 text-linnk-stone-600'
-                        }`}
-                      >
-                        {ref.modality === 'CONECTA' ? 'Edição Liberada' : 'Somente Leitura'}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
+                    <div className="font-display font-bold text-sm text-linnk-obsidian">
+                      {cli?.name}
+                    </div>
+                    <div className="text-xs text-linnk-stone-500 mt-0.5 truncate">
+                      {dev?.name} {!isBroker && `· Corretor: ${brk?.name}`}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        <ModalityBadge modality={ref.modality} />
+                        <ReferralStatusBadge status={ref.status} />
+                      </div>
+                      {isBroker && (
+                        <span
+                          className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded ${
+                            ref.modality === 'CONECTA'
+                              ? 'bg-linnk-obsidian text-white'
+                              : 'bg-linnk-stone-100 text-linnk-stone-600'
+                          }`}
+                        >
+                          {ref.modality === 'CONECTA' ? 'Edição Liberada' : 'Somente Leitura'}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
           </div>
         </div>
 
         {/* Coluna Direita: Linha do Tempo + Formulário de Registro de Atividade (8 colunas) */}
-        {currentRef && (
+        {!currentRef ? (
+          <div className="lg:col-span-8 bg-white rounded-3xl p-12 border border-linnk-stone-300/80 shadow-arch-card text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-linnk-stone-100 text-linnk-stone-400 mx-auto flex items-center justify-center">
+              <MessageSquareMore className="w-6 h-6" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+              Nenhum atendimento selecionado
+            </h3>
+            <p className="text-xs text-linnk-stone-500 max-w-md mx-auto leading-relaxed">
+              Selecione uma indicação da lista ou cadastre uma nova indicação para iniciar a linha do tempo comercial.
+            </p>
+          </div>
+        ) : (
           <div className="lg:col-span-8 space-y-6">
             {/* Resumo da Indicação & Regra de Condução */}
             <div className="bg-white rounded-3xl p-6 border border-linnk-stone-300/80 shadow-arch-card">

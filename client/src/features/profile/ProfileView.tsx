@@ -73,9 +73,9 @@ export const ProfileView: React.FC = () => {
     currentBroker?.email || currentUser?.email || ''
   );
   const [titleInput, setTitleInput] = useState(currentUser?.title || '');
-  const [phoneInput, setPhoneInput] = useState(currentBroker?.phone || '(77) 99912-4410');
+  const [phoneInput, setPhoneInput] = useState(currentBroker?.phone || '');
   const [creciInput, setCreciInput] = useState(currentBroker?.creci || '');
-  const [cityInput, setCityInput] = useState(currentBroker?.city || 'Ilhéus');
+  const [cityInput, setCityInput] = useState(currentBroker?.city || '');
   const [stateInput, setStateInput] = useState(currentBroker?.state || 'BA');
   const [pixInput, setPixInput] = useState(
     currentBroker?.pixKey || currentUser?.email || ''

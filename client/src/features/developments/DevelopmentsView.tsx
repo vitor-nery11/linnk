@@ -31,14 +31,14 @@ export const DevelopmentsView: React.FC = () => {
 
   const [developerId, setDeveloperId] = useState(developers[0]?.id || '');
   const [name, setName] = useState('');
-  const [city, setCity] = useState('Ilhéus · BA');
+  const [city, setCity] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [incorporationRegistry, setIncorporationRegistry] = useState('');
-  const [affectationPatrimony, setAffectationPatrimony] = useState(true);
+  const [affectationPatrimony, setAffectationPatrimony] = useState(false);
   const [constructionStatus, setConstructionStatus] =
     useState<Development['constructionStatus']>('LANCAMENTO');
   const [defaultCommissionRate, setDefaultCommissionRate] = useState('4.0');
-  const [averageTicketInput, setAverageTicketInput] = useState('850.000,00');
+  const [averageTicketInput, setAverageTicketInput] = useState('');
 
   const canEdit =
     currentUser?.role === 'ADMIN' ||
@@ -48,13 +48,13 @@ export const DevelopmentsView: React.FC = () => {
     setEditingDev(null);
     setDeveloperId(developers[0]?.id || '');
     setName('');
-    setCity('Ilhéus · BA');
+    setCity('');
     setNeighborhood('');
-    setIncorporationRegistry('R-1 Matrícula · CRI Ilhéus');
-    setAffectationPatrimony(true);
+    setIncorporationRegistry('');
+    setAffectationPatrimony(false);
     setConstructionStatus('LANCAMENTO');
     setDefaultCommissionRate('4.0');
-    setAverageTicketInput('850.000,00');
+    setAverageTicketInput('');
     setShowModal(true);
   };
 
@@ -85,7 +85,7 @@ export const DevelopmentsView: React.FC = () => {
         affectationPatrimony,
         constructionStatus,
         defaultCommissionRate: parseFloat(defaultCommissionRate) || 4.0,
-        averageTicketCents: parseBRLToCents(averageTicketInput) || 85000000,
+        averageTicketCents: parseBRLToCents(averageTicketInput) || 0,
         linnkSealVerified: true,
         active: editingDev ? editingDev.active : true,
       },
@@ -131,7 +131,20 @@ export const DevelopmentsView: React.FC = () => {
 
       {/* Cards dos Empreendimentos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {developments.map((dev) => {
+        {developments.length === 0 ? (
+          <div className="col-span-full bg-white rounded-3xl p-12 border border-linnk-stone-300/80 shadow-arch-card text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-linnk-stone-100 text-linnk-stone-400 mx-auto flex items-center justify-center">
+              <Building2 className="w-6 h-6" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+              Nenhum empreendimento cadastrado
+            </h3>
+            <p className="text-xs text-linnk-stone-500 max-w-md mx-auto leading-relaxed">
+              Cadastre novos empreendimentos homologados com parâmetros de comissão e critérios de curadoria.
+            </p>
+          </div>
+        ) : (
+          developments.map((dev) => {
           const developer = developers.find((dv) => dv.id === dev.developerId);
           const devReferrals = referrals.filter((r) => r.developmentId === dev.id);
           const devSales = sales.filter((s) => s.developmentId === dev.id);
@@ -224,13 +237,14 @@ export const DevelopmentsView: React.FC = () => {
               </div>
             </div>
           );
-        })}
+        })
+      )}
       </div>
 
       {/* Modal de Empreendimento */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto border border-linnk-stone-300 shadow-obsidian">
             <div className="bg-linnk-obsidian text-white px-6 py-4 flex items-center justify-between">
               <h3 className="font-display font-bold text-lg">
                 {editingDev ? 'Editar Empreendimento' : 'Homologar Novo Empreendimento'}
@@ -264,13 +278,21 @@ export const DevelopmentsView: React.FC = () => {
                   <select
                     value={developerId}
                     onChange={(e) => setDeveloperId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
+                    disabled={developers.length === 0}
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 disabled:opacity-60"
                   >
-                    {developers.map((dv) => (
-                      <option key={dv.id} value={dv.id}>
-                        {dv.name}
-                      </option>
-                    ))}
+                    {developers.length === 0 ? (
+                      <option value="">Nenhuma incorporadora cadastrada</option>
+                    ) : (
+                      <>
+                        <option value="">Selecione uma incorporadora</option>
+                        {developers.map((dv) => (
+                          <option key={dv.id} value={dv.id}>
+                            {dv.name}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>

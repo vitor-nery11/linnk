@@ -159,6 +159,8 @@ export interface ReferralDocument {
   reviewedAt?: string;
   reviewedByUserId?: string;
   reviewNotes?: string;
+  sentAt?: string;
+  sentToEmail?: string;
 }
 
 export type AttendanceType =

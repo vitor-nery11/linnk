@@ -231,7 +231,7 @@ export const SidebarLayout: React.FC<{ children: React.ReactNode }> = ({ childre
     },
     {
       id: 'sales',
-      label: isBroker ? 'Financeiro' : 'Vendas, Comissões & Repasses',
+      label: 'Financeiro',
       group: 'FINANCEIRO',
       icon: Receipt,
       badge: !isBroker && pendingFinanceCount > 0 ? pendingFinanceCount : undefined,
@@ -245,7 +245,7 @@ export const SidebarLayout: React.FC<{ children: React.ReactNode }> = ({ childre
     },
     {
       id: 'users',
-      label: 'Usuários & Regras 50/50',
+      label: 'Usuários & Regras',
       group: 'GOVERNANCA',
       icon: Sliders,
       adminOnly: true,

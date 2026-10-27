@@ -335,47 +335,55 @@ export const DashboardView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-linnk-stone-200 text-sm">
-                {referrals.slice(0, 6).map((ref) => {
-                  const cli = clients.find((c) => c.id === ref.clientId);
-                  const brk = brokers.find((b) => b.id === ref.brokerId);
-                  const dev = developments.find((d) => d.id === ref.developmentId);
+                {referrals.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-10 px-5 text-center text-linnk-stone-500 text-xs">
+                      Nenhuma indicação cadastrada no momento.
+                    </td>
+                  </tr>
+                ) : (
+                  referrals.slice(0, 6).map((ref) => {
+                    const cli = clients.find((c) => c.id === ref.clientId);
+                    const brk = brokers.find((b) => b.id === ref.brokerId);
+                    const dev = developments.find((d) => d.id === ref.developmentId);
 
-                  return (
-                    <tr
-                      key={ref.id}
-                      onClick={() => {
-                        setSelectedReferralId(ref.id);
-                        setActiveNav('referrals');
-                      }}
-                      className="hover:bg-linnk-stone-50/90 cursor-pointer transition-colors"
-                    >
-                      <td className="py-3.5 px-5">
-                        <div className="font-mono text-xs font-semibold text-linnk-flame">
-                          {ref.code}
-                        </div>
-                        <div className="font-semibold text-linnk-obsidian">
-                          {cli?.name || 'Cliente'}
-                        </div>
-                        <div className="text-xs text-linnk-stone-500">{cli?.phone}</div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <div className="font-medium text-linnk-obsidian">{brk?.name}</div>
-                        <div className="text-xs text-linnk-stone-500 truncate max-w-[210px]">
-                          {dev?.name}
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <ModalityBadge modality={ref.modality} />
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <ReferralStatusBadge status={ref.status} />
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <DocumentStatusBadge status={ref.documentStatus} />
-                      </td>
-                    </tr>
-                  );
-                })}
+                    return (
+                      <tr
+                        key={ref.id}
+                        onClick={() => {
+                          setSelectedReferralId(ref.id);
+                          setActiveNav('referrals');
+                        }}
+                        className="hover:bg-linnk-stone-50/90 cursor-pointer transition-colors"
+                      >
+                        <td className="py-3.5 px-5">
+                          <div className="font-mono text-xs font-semibold text-linnk-flame">
+                            {ref.code}
+                          </div>
+                          <div className="font-semibold text-linnk-obsidian">
+                            {cli?.name || 'Cliente'}
+                          </div>
+                          <div className="text-xs text-linnk-stone-500">{cli?.phone}</div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="font-medium text-linnk-obsidian">{brk?.name}</div>
+                          <div className="text-xs text-linnk-stone-500 truncate max-w-[210px]">
+                            {dev?.name}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <ModalityBadge modality={ref.modality} />
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <ReferralStatusBadge status={ref.status} />
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <DocumentStatusBadge status={ref.documentStatus} />
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -478,24 +486,30 @@ export const DashboardView: React.FC = () => {
             </div>
 
             <div className="space-y-3.5">
-              {auditLogs.slice(0, 4).map((log) => (
-                <div
-                  key={log.id}
-                  className="p-3 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200/80 text-xs"
-                >
-                  <div className="flex items-center justify-between text-[10px] font-mono text-linnk-stone-500 mb-1">
-                    <span className="font-bold text-linnk-obsidian">{log.module}</span>
-                    <span>{formatDateTimeBR(log.createdAt)}</span>
+              {auditLogs.length === 0 ? (
+                <p className="text-xs text-linnk-stone-500 py-3 text-center">
+                  Nenhuma atividade registrada na auditoria.
+                </p>
+              ) : (
+                auditLogs.slice(0, 4).map((log) => (
+                  <div
+                    key={log.id}
+                    className="p-3 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200/80 text-xs"
+                  >
+                    <div className="flex items-center justify-between text-[10px] font-mono text-linnk-stone-500 mb-1">
+                      <span className="font-bold text-linnk-obsidian">{log.module}</span>
+                      <span>{formatDateTimeBR(log.createdAt)}</span>
+                    </div>
+                    <div className="font-semibold text-linnk-obsidian">{log.summary}</div>
+                    <div className="text-linnk-stone-500 mt-1 flex items-center gap-1">
+                      <UserCheck className="w-3 h-3 text-linnk-flame" />
+                      <span>
+                        {log.userName} ({log.userRole})
+                      </span>
+                    </div>
                   </div>
-                  <div className="font-semibold text-linnk-obsidian">{log.summary}</div>
-                  <div className="text-linnk-stone-500 mt-1 flex items-center gap-1">
-                    <UserCheck className="w-3 h-3 text-linnk-flame" />
-                    <span>
-                      {log.userName} ({log.userRole})
-                    </span>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>

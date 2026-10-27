@@ -40,12 +40,12 @@ export const BrokersView: React.FC = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [creci, setCreci] = useState('');
-  const [city, setCity] = useState('Vitória da Conquista');
+  const [city, setCity] = useState('');
   const [state, setState] = useState('BA');
   const [defaultModality, setDefaultModality] = useState<Modality>('INDICA');
-  const [isFoundingMember, setIsFoundingMember] = useState(true);
-  const [adhesionTermSigned, setAdhesionTermSigned] = useState(true);
-  const [ndaTermSigned, setNdaTermSigned] = useState(true);
+  const [isFoundingMember, setIsFoundingMember] = useState(false);
+  const [adhesionTermSigned, setAdhesionTermSigned] = useState(false);
+  const [ndaTermSigned, setNdaTermSigned] = useState(false);
   const [pixKey, setPixKey] = useState('');
 
   const canEdit =
@@ -56,13 +56,13 @@ export const BrokersView: React.FC = () => {
     setName('');
     setEmail('');
     setPhone('');
-    setCreci('CRECI-BA ');
-    setCity('Ilhéus');
+    setCreci('');
+    setCity('');
     setState('BA');
     setDefaultModality('INDICA');
-    setIsFoundingMember(true);
-    setAdhesionTermSigned(true);
-    setNdaTermSigned(true);
+    setIsFoundingMember(false);
+    setAdhesionTermSigned(false);
+    setNdaTermSigned(false);
     setPixKey('');
     setShowFormModal(true);
   };
@@ -178,7 +178,20 @@ export const BrokersView: React.FC = () => {
             detailBroker ? 'xl:col-span-7' : 'xl:col-span-12'
           } grid grid-cols-1 md:grid-cols-2 gap-4`}
         >
-          {filteredBrokers.map((b) => {
+          {filteredBrokers.length === 0 ? (
+            <div className="col-span-full bg-white rounded-3xl p-12 border border-linnk-stone-300/80 shadow-arch-card text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-linnk-stone-100 text-linnk-stone-400 mx-auto flex items-center justify-center">
+                <UserCheck className="w-6 h-6" />
+              </div>
+              <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+                Nenhum corretor encontrado
+              </h3>
+              <p className="text-xs text-linnk-stone-500 max-w-md mx-auto leading-relaxed">
+                Cadastre novos corretores parceiros para iniciar a esteira de indicações e comissões integradas.
+              </p>
+            </div>
+          ) : (
+            filteredBrokers.map((b) => {
             const brokerRefs = referrals.filter((r) => r.brokerId === b.id);
             const brokerSales = sales.filter((s) =>
               brokerRefs.some((r) => r.id === s.referralId)
@@ -300,7 +313,8 @@ export const BrokersView: React.FC = () => {
                 </div>
               </div>
             );
-          })}
+          })
+        )}
         </div>
 
         {/* Drawer de Detalhes do Corretor e Indicações Vinculadas */}
@@ -383,8 +397,8 @@ export const BrokersView: React.FC = () => {
 
       {/* Modal de Cadastro / Edição de Corretor */}
       {showFormModal && (
-        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto border border-linnk-stone-300 shadow-obsidian">
             <div className="bg-linnk-obsidian text-white px-6 py-4 flex items-center justify-between">
               <h3 className="font-display font-bold text-lg">
                 {editingBroker ? 'Editar Corretor Parceiro' : 'Novo Corretor Parceiro'}

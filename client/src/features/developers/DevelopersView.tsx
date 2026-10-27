@@ -18,7 +18,7 @@ export const DevelopersView: React.FC = () => {
   const [name, setName] = useState('');
   const [legalName, setLegalName] = useState('');
   const [cnpj, setCnpj] = useState('');
-  const [city, setCity] = useState('Ilhéus · BA');
+  const [city, setCity] = useState('');
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -33,11 +33,11 @@ export const DevelopersView: React.FC = () => {
     setName('');
     setLegalName('');
     setCnpj('');
-    setCity('Ilhéus · BA');
+    setCity('');
     setContactName('');
     setContactEmail('');
     setContactPhone('');
-    setPaymentRuleDescription('50% na assinatura + 50% em 30 dias.');
+    setPaymentRuleDescription('');
     setShowModal(true);
   };
 
@@ -109,7 +109,20 @@ export const DevelopersView: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {developers.map((dv) => {
+        {developers.length === 0 ? (
+          <div className="col-span-full bg-white rounded-3xl p-12 border border-linnk-stone-300/80 shadow-arch-card text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-linnk-stone-100 text-linnk-stone-400 mx-auto flex items-center justify-center">
+              <Building className="w-6 h-6" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+              Nenhuma incorporadora cadastrada
+            </h3>
+            <p className="text-xs text-linnk-stone-500 max-w-md mx-auto leading-relaxed">
+              Cadastre incorporadoras e construtoras parceiras com dados de contato e regras de pagamento de comissão.
+            </p>
+          </div>
+        ) : (
+          developers.map((dv) => {
           const linkedDevs = developments.filter((d) => d.developerId === dv.id);
           return (
             <div
@@ -181,12 +194,13 @@ export const DevelopersView: React.FC = () => {
               </div>
             </div>
           );
-        })}
+        })
+      )}
       </div>
 
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-linnk-stone-300 shadow-obsidian">
             <div className="bg-linnk-obsidian text-white px-6 py-4 flex items-center justify-between">
               <h3 className="font-display font-bold text-lg">
                 {editingDev ? 'Editar Incorporadora' : 'Nova Incorporadora'}

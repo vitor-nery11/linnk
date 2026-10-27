@@ -6,8 +6,6 @@ import {
   EyeOff,
   Lock,
   Mail,
-  ShieldCheck,
-  UserCheck,
   Users,
 } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
@@ -18,70 +16,72 @@ const ROLE_OPTIONS: {
   role: UserRole;
   label: string;
   shortDesc: string;
-  defaultEmail: string;
 }[] = [
   {
     role: 'ADMIN',
     label: 'Administrador',
     shortDesc: 'Gestão global da plataforma, regras de comissão, financeiro e auditoria.',
-    defaultEmail: 'vitor@linnk.com.br',
   },
   {
     role: 'OPERATOR',
     label: 'Operador',
-    shortDesc: 'Execução diária: triagem de indicações, conferência de termos e atendimento.',
-    defaultEmail: 'camila.operacao@linnk.com.br',
+    shortDesc: 'Gestão de contratos, esteira de propostas e atendimento a clientes.',
   },
   {
     role: 'BROKER',
     label: 'Corretor',
-    shortDesc: 'Envio e acompanhamento das próprias indicações, lançamentos e comissões 50%.',
-    defaultEmail: 'henrique.bastos@corretorba.com.br',
+    shortDesc: 'Envio de propostas, consulta de tabelas, comissões e acompanhamento de vendas.',
   },
 ];
 
-export const LoginScreen: React.FC = () => {
-  const { users, loginAs } = useApp();
+interface LoginScreenProps {
+  onNavigateToRegister?: () => void;
+}
+
+export const LoginScreen: React.FC<LoginScreenProps> = ({
+  onNavigateToRegister,
+}) => {
+  const { loginWithCredentials } = useApp();
 
   const [selectedRole, setSelectedRole] = useState<UserRole>('ADMIN');
-  const [email, setEmail] = useState('vitor@linnk.com.br');
-  const [password, setPassword] = useState('linnk2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [keepSigned, setKeepSigned] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSelectRole = (role: UserRole) => {
     setErrorMsg('');
     setSelectedRole(role);
-    const target = users.find((u) => u.role === role && u.active);
-    if (target) {
-      setEmail(target.email);
-      setPassword('linnk2026');
-    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
     const normalized = email.trim().toLowerCase();
-    const matchedUser = users.find(
-      (u) => u.email.toLowerCase() === normalized && u.active
-    );
-
-    if (!matchedUser) {
-      setErrorMsg(
-        'Credencial não localizada para o perfil selecionado. Verifique seu e-mail de acesso.'
-      );
+    if (!normalized || !normalized.includes('@')) {
+      setErrorMsg('Informe um e-mail de acesso válido.');
       return;
     }
 
     if (password.trim().length < 4) {
-      setErrorMsg('Informe sua senha de acesso para prosseguir.');
+      setErrorMsg('Informe sua senha de acesso para prosseguir (mínimo 4 caracteres).');
       return;
     }
 
-    loginAs(matchedUser.id);
+    try {
+      setIsSubmitting(true);
+      const result = await loginWithCredentials(normalized, selectedRole, password);
+      if (!result.ok) {
+        setErrorMsg(result.error || 'Credencial não autorizada para o perfil selecionado.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro inesperado ao realizar autenticação.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const activeRoleMeta =
@@ -184,170 +184,259 @@ export const LoginScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* Coluna Direita — Formulário de Login Limpo com Definição dos 3 Perfis */}
-      <div className="lg:col-span-7 flex flex-col justify-between p-6 sm:p-12 xl:p-16 bg-[#F8F8F7] lg:bg-white">
-        {/* Topo visível apenas no mobile */}
-        <div className="flex items-center justify-between lg:hidden mb-8">
-          <BrandLogo variant="light" size="md" />
-        </div>
-
-        {/* Container Central do Formulário */}
-        <div className="w-full max-w-[420px] mx-auto my-auto bg-white lg:bg-transparent p-7 sm:p-8 lg:p-0 rounded-2xl lg:rounded-none border border-neutral-200/80 lg:border-0 shadow-xs lg:shadow-none">
-          <div className="mb-6">
-            <h2 className="font-display font-semibold text-2xl text-[#161316] tracking-tight">
-              Acessar plataforma
-            </h2>
-            <p className="text-sm text-neutral-500 mt-1">
-              Selecione seu perfil de acesso e informe suas credenciais.
-            </p>
-          </div>
-
-          {/* Seletor Segmentado dos 3 Tipos de Usuário (Administrador, Operador, Corretor) */}
-          <div className="mb-6">
-            <label className="block text-xs font-semibold text-neutral-700 mb-2">
-              Perfil de acesso
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-neutral-100 border border-neutral-200">
-              {ROLE_OPTIONS.map((opt) => {
-                const isSelected = selectedRole === opt.role;
-                return (
-                  <button
-                    key={opt.role}
-                    type="button"
-                    onClick={() => handleSelectRole(opt.role)}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#161316] text-white shadow-xs font-semibold'
-                        : 'text-neutral-600 hover:text-[#161316]'
-                    }`}
-                  >
-                    {opt.role === 'ADMIN' && (
-                      <ShieldCheck
-                        className={`w-3.5 h-3.5 ${
-                          isSelected ? 'text-[#FE4701]' : 'text-neutral-400'
-                        }`}
-                      />
-                    )}
-                    {opt.role === 'OPERATOR' && (
-                      <Users
-                        className={`w-3.5 h-3.5 ${
-                          isSelected ? 'text-[#FE4701]' : 'text-neutral-400'
-                        }`}
-                      />
-                    )}
-                    {opt.role === 'BROKER' && (
-                      <Briefcase
-                        className={`w-3.5 h-3.5 ${
-                          isSelected ? 'text-[#FE4701]' : 'text-neutral-400'
-                        }`}
-                      />
-                    )}
-                    <span>{opt.label}</span>
-                  </button>
-                );
-              })}
+      {/* Coluna Direita — Layout Mobile Nativo Limpo + Centralizado no Desktop */}
+      <div className="lg:col-span-7 bg-white text-[#18181b]">
+        <div className="w-full min-h-screen flex flex-col justify-between px-6 py-8 max-w-md mx-auto lg:py-12">
+          {/* BEGIN: TopBrandHeader */}
+          <header
+            className="pt-2 pb-6 flex items-center justify-between"
+            data-purpose="brand-header"
+          >
+            <div className="lg:hidden">
+              <BrandLogo variant="light" size="md" />
             </div>
-            <p className="text-xs text-neutral-500 mt-2 leading-relaxed">
-              {activeRoleMeta.shortDesc}
-            </p>
-          </div>
-
-          {errorMsg && (
-            <div className="mb-5 p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 leading-relaxed">
-              {errorMsg}
+            <div className="hidden lg:block">
+              <span className="text-[12px] font-semibold tracking-wider text-gray-400 uppercase">
+                Acesso Seguro
+              </span>
             </div>
-          )}
+          </header>
+          {/* END: TopBrandHeader */}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label
-                htmlFor="login-email"
-                className="block text-xs font-semibold text-neutral-700 mb-1.5"
-              >
-                E-mail de acesso
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  id="login-email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="nome@dominio.com.br"
-                  className="w-full pl-10 pr-3.5 py-2.5 rounded-lg bg-white border border-neutral-300 text-sm text-[#161316] placeholder:text-neutral-400 focus:border-[#161316] focus:ring-2 focus:ring-[#161316]/10 focus:outline-none transition-all"
-                />
+          {/* BEGIN: AuthCard */}
+          <main
+            className="w-full flex-1 lg:flex-initial flex flex-col justify-start p-0 bg-transparent"
+            data-purpose="login-container"
+          >
+            {/* Heading & Explanatory Subtitle */}
+            <div className="mb-6">
+              <h1 className="text-[22px] sm:text-2xl font-bold tracking-tight text-[#111827] mb-1.5">
+                Acessar plataforma
+              </h1>
+              <p className="text-[13.5px] leading-relaxed text-[#6b7280]">
+                Selecione seu perfil de acesso e informe suas credenciais.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="mb-5 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 leading-relaxed">
+                {errorMsg}
               </div>
-            </div>
+            )}
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label
-                  htmlFor="login-password"
-                  className="block text-xs font-semibold text-neutral-700"
-                >
-                  Senha
+            {/* BEGIN: AccessForm */}
+            <form onSubmit={handleSubmit} className="space-y-5" id="login-form">
+              {/* Role Selector (Segmented Control) */}
+              <div data-purpose="role-selector-section">
+                <label className="block text-[13px] font-semibold text-[#374151] mb-2">
+                  Perfil de acesso
                 </label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setErrorMsg(
-                      'Para redefinição de senha, solicite suporte ao Administrador da LINNK.'
-                    )
-                  }
-                  className="text-xs font-medium text-neutral-500 hover:text-[#161316] transition-colors"
+                <div
+                  className="grid grid-cols-3 gap-1 p-1 bg-[#f9fafb] rounded-xl border border-gray-200"
+                  role="tablist"
                 >
-                  Esqueceu a senha?
-                </button>
-              </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 rounded-lg bg-white border border-neutral-300 text-sm text-[#161316] placeholder:text-neutral-400 focus:border-[#161316] focus:ring-2 focus:ring-[#161316]/10 focus:outline-none transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 p-1"
-                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  {ROLE_OPTIONS.map((opt) => {
+                    const isSelected = selectedRole === opt.role;
+                    return (
+                      <button
+                        key={opt.role}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        onClick={() => handleSelectRole(opt.role)}
+                        className={`flex items-center justify-center gap-1.5 py-2 px-1 text-[12.5px] rounded-lg transition-all focus:outline-none cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#18181b] text-white shadow-sm font-semibold'
+                            : 'font-medium text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        {opt.role === 'OPERATOR' && (
+                          <Users className="w-3.5 h-3.5 opacity-70 shrink-0" />
+                        )}
+                        {opt.role === 'BROKER' && (
+                          <Briefcase className="w-3.5 h-3.5 opacity-70 shrink-0" />
+                        )}
+                        <span>{opt.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Dynamic Role Description */}
+                <p
+                  className="mt-2 text-[12px] leading-relaxed text-[#6b7280]"
+                  id="role-description"
                 >
-                  {showPassword ? (
-                    <EyeOff className="w-4 h-4" />
-                  ) : (
-                    <Eye className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-            </div>
+                  {activeRoleMeta.shortDesc}
+                </p>
 
-            <div className="flex items-center justify-between pt-0.5">
-              <label className="inline-flex items-center gap-2 text-xs text-neutral-600 cursor-pointer select-none">
+                {selectedRole === 'BROKER' && onNavigateToRegister && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-orange-50/70 border border-orange-100/90 flex items-center justify-between text-[12px] animate-fadeIn">
+                    <span className="text-gray-600 font-medium">Novo corretor na LINNK?</span>
+                    <button
+                      type="button"
+                      onClick={onNavigateToRegister}
+                      className="font-bold text-[#f95721] hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <span>Cadastre-se agora</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Input Field: E-mail */}
+              <div data-purpose="email-input-group">
+                <label
+                  className="block text-[13px] font-semibold text-[#374151] mb-1.5"
+                  htmlFor="login-email"
+                >
+                  E-mail de acesso
+                </label>
+                <div className="relative flex items-center rounded-xl border border-gray-300 bg-white shadow-xs focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-400 transition-all">
+                  <div className="pl-3.5 pr-1 pointer-events-none text-gray-400">
+                    <Mail className="w-5 h-5" strokeWidth={1.8} />
+                  </div>
+                  <input
+                    id="login-email"
+                    name="email"
+                    type="email"
+                    required
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="seuemail@linnk.com.br"
+                    className="w-full py-3 pr-3.5 pl-1.5 text-[14px] text-gray-900 border-0 bg-transparent placeholder-gray-400 focus:ring-0 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Input Field: Senha */}
+              <div data-purpose="password-input-group">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    className="text-[13px] font-semibold text-[#374151]"
+                    htmlFor="login-password"
+                  >
+                    Senha
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setErrorMsg(
+                        'Para redefinição de senha, solicite suporte ao Administrador da LINNK.'
+                      )
+                    }
+                    className="text-[12px] font-normal text-gray-500 hover:text-gray-800 transition-colors cursor-pointer"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </div>
+                <div className="relative flex items-center rounded-xl border border-gray-300 bg-white shadow-xs focus-within:border-gray-400 focus-within:ring-1 focus-within:ring-gray-400 transition-all">
+                  <div className="pl-3.5 pr-1 pointer-events-none text-gray-400">
+                    <Lock className="w-5 h-5" strokeWidth={1.8} />
+                  </div>
+                  <input
+                    id="login-password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Digite sua senha"
+                    className="w-full py-3 px-1.5 text-[14px] text-gray-900 tracking-wider border-0 bg-transparent placeholder-gray-400 focus:ring-0 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    aria-label="Alternar visibilidade da senha"
+                    className="pr-3.5 pl-1 text-gray-400 hover:text-gray-600 focus:outline-none cursor-pointer"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" strokeWidth={1.8} />
+                    ) : (
+                      <Eye className="w-5 h-5" strokeWidth={1.8} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Checkbox: Manter sessão conectada */}
+              <div className="flex items-center pt-0.5" data-purpose="remember-session">
                 <input
+                  id="remember-me"
+                  name="remember-me"
                   type="checkbox"
                   checked={keepSigned}
                   onChange={(e) => setKeepSigned(e.target.checked)}
-                  className="w-3.5 h-3.5 rounded border-neutral-300 accent-[#161316]"
+                  className="h-4 w-4 rounded border-gray-300 text-[#18181b] accent-[#18181b] focus:ring-black cursor-pointer"
                 />
-                <span>Manter sessão conectada</span>
-              </label>
-            </div>
+                <label
+                  htmlFor="remember-me"
+                  className="ml-2 block text-[13px] text-gray-600 select-none cursor-pointer"
+                >
+                  Manter sessão conectada
+                </label>
+              </div>
 
+              {/* Primary CTA Button */}
+              <div className="pt-2" data-purpose="form-actions">
+                <button
+                  id="submit-button"
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full flex items-center justify-center gap-2.5 py-3.5 px-4 bg-[#18181b] hover:bg-[#27272a] active:scale-[0.99] text-white text-[14px] font-semibold rounded-xl shadow-md transition-all duration-150 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+                >
+                  <span id="submit-text">
+                    {isSubmitting ? 'Acessando plataforma...' : `Entrar como ${activeRoleMeta.label}`}
+                  </span>
+                  <ArrowRight
+                    className={`w-4 h-4 text-[#f95721] shrink-0 ${isSubmitting ? 'animate-pulse' : ''}`}
+                    strokeWidth={2.5}
+                  />
+                </button>
+              </div>
+
+              {/* Botão e Chamada de Cadastro de Corretor */}
+              {onNavigateToRegister && (
+                <div className="pt-4 border-t border-gray-100 flex flex-col items-center gap-1.5 text-center">
+                  <p className="text-[12.5px] text-gray-500">
+                    É corretor imobiliário e quer ser nosso parceiro?
+                  </p>
+                  <button
+                    type="button"
+                    onClick={onNavigateToRegister}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-[13.5px] font-bold text-[#f95721] hover:text-[#ea4915] transition-all py-2.5 px-4 rounded-xl border border-orange-200/80 bg-orange-50/50 hover:bg-orange-50 cursor-pointer"
+                  >
+                    <span>Cadastre-se como Corretor Parceiro</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </form>
+            {/* END: AccessForm */}
+          </main>
+
+          {/* Footer */}
+          <footer
+            className="pt-8 pb-2 text-center text-[12px] text-gray-500 flex flex-col sm:flex-row items-center justify-center gap-2"
+            data-purpose="screen-footer"
+          >
             <button
-              type="submit"
-              className="w-full bg-[#161316] hover:bg-neutral-800 text-white font-medium text-sm py-2.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              type="button"
+              onClick={() =>
+                setErrorMsg(
+                  'Suporte LINNK: entre em contato pelo e-mail suporte@linnk.com.br ou com o Administrador.'
+                )
+              }
+              className="hover:text-gray-800 transition-colors cursor-pointer"
             >
-              <span>Entrar como {activeRoleMeta.label}</span>
-              <ArrowRight className="w-4 h-4 text-[#FE4701]" />
+              Precisa de ajuda? Fale com o suporte
             </button>
-          </form>
+            <span className="hidden sm:inline opacity-40">•</span>
+            <span className="text-gray-400">© 2025 Linnk Tecnologia</span>
+          </footer>
+          {/* END: AuthCard */}
         </div>
       </div>
     </div>

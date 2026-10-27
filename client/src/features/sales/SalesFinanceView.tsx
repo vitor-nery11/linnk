@@ -70,9 +70,9 @@ export const SalesFinanceView: React.FC = () => {
 
   // Estado do modal de Nova Venda
   const [selectedRefId, setSelectedRefId] = useState(eligibleReferrals[0]?.id || '');
-  const [unitIdentifier, setUnitIdentifier] = useState('Torre Sul · Unidade 802');
-  const [contractNumber, setContractNumber] = useState('CTR-2026-802');
-  const [saleValueInput, setSaleValueInput] = useState('850.000,00');
+  const [unitIdentifier, setUnitIdentifier] = useState('');
+  const [contractNumber, setContractNumber] = useState('');
+  const [saleValueInput, setSaleValueInput] = useState('');
   const [commissionRateInput, setCommissionRateInput] = useState('4.0');
   const [createInitialInstallments, setCreateInitialInstallments] = useState(true);
 
@@ -80,11 +80,11 @@ export const SalesFinanceView: React.FC = () => {
   const [txType, setTxType] = useState<'RECEBIMENTO_INCORPORADORA' | 'REPASSE_CORRETOR'>(
     'RECEBIMENTO_INCORPORADORA'
   );
-  const [txLabel, setTxLabel] = useState('Parcela Parcial · Sinal');
-  const [txAmountInput, setTxAmountInput] = useState('9.500,00');
-  const [txDueDate, setTxDueDate] = useState('2026-11-15');
-  const [txConfirmNow, setTxConfirmNow] = useState(true);
-  const [txReceiptFile, setTxReceiptFile] = useState('comprovante_ted_pix.pdf');
+  const [txLabel, setTxLabel] = useState('');
+  const [txAmountInput, setTxAmountInput] = useState('');
+  const [txDueDate, setTxDueDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [txConfirmNow, setTxConfirmNow] = useState(false);
+  const [txReceiptFile, setTxReceiptFile] = useState('');
 
   // Pré-cálculo da venda no modal
   const previewSaleCents = parseBRLToCents(saleValueInput);
@@ -161,8 +161,8 @@ export const SalesFinanceView: React.FC = () => {
           </div>
           <h2 className="font-display font-bold text-2xl text-linnk-obsidian mt-1">
             {isBroker
-              ? 'Minhas Vendas, Comissão 50% & Repasses'
-              : 'Vendas, Memória de Cálculo 50/50, Recebimentos & Repasses'}
+              ? 'Financeiro · Minhas Comissões 50% & Repasses'
+              : 'Financeiro · Comissões 50/50, Recebimentos & Repasses'}
           </h2>
           <p className="text-sm text-linnk-stone-600 mt-1">
             {isBroker
@@ -194,7 +194,20 @@ export const SalesFinanceView: React.FC = () => {
       </div>
 
       {/* Lista de Vendas e Respectivas Comissões + Movimentações Financeiras */}
-      {visibleSales.map((sale) => {
+      {visibleSales.length === 0 ? (
+        <div className="bg-white rounded-3xl p-12 border border-linnk-stone-300/80 shadow-arch-card text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-linnk-stone-100 text-linnk-stone-400 mx-auto flex items-center justify-center">
+            <Receipt className="w-6 h-6" />
+          </div>
+          <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+            Nenhuma venda registrada no momento
+          </h3>
+          <p className="text-xs text-linnk-stone-500 max-w-md mx-auto leading-relaxed">
+            As vendas consolidadas aparecerão aqui com memória de cálculo congelada, fluxo de recebimentos da incorporadora e repasses aos corretores.
+          </p>
+        </div>
+      ) : (
+        visibleSales.map((sale) => {
         const ref = referrals.find((r) => r.id === sale.referralId);
         const cli = ref ? clients.find((c) => c.id === ref.clientId) : null;
         const brk = ref ? brokers.find((b) => b.id === ref.brokerId) : null;
@@ -529,12 +542,13 @@ export const SalesFinanceView: React.FC = () => {
             </div>
           </div>
         );
-      })}
+      })
+    )}
 
       {/* Modal de Nova Venda */}
       {showSaleModal && (
-        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden">
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full max-h-[90vh] overflow-y-auto border border-linnk-stone-300 shadow-obsidian">
             <div className="bg-linnk-obsidian text-white px-6 py-4 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-widest text-linnk-flame">
@@ -561,17 +575,25 @@ export const SalesFinanceView: React.FC = () => {
                   required
                   value={selectedRefId}
                   onChange={(e) => setSelectedRefId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
+                  disabled={eligibleReferrals.length === 0}
+                  className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 disabled:opacity-60"
                 >
-                  {eligibleReferrals.map((r) => {
-                    const c = clients.find((cl) => cl.id === r.clientId);
-                    const b = brokers.find((br) => br.id === r.brokerId);
-                    return (
-                      <option key={r.id} value={r.id}>
-                        {r.code} — Cliente: {c?.name} (Corretor: {b?.name})
-                      </option>
-                    );
-                  })}
+                  {eligibleReferrals.length === 0 ? (
+                    <option value="">Nenhuma indicação com termo aprovado disponível</option>
+                  ) : (
+                    <>
+                      <option value="">Selecione uma indicação</option>
+                      {eligibleReferrals.map((r) => {
+                        const c = clients.find((cl) => cl.id === r.clientId);
+                        const b = brokers.find((br) => br.id === r.brokerId);
+                        return (
+                          <option key={r.id} value={r.id}>
+                            {r.code} — Cliente: {c?.name} (Corretor: {b?.name})
+                          </option>
+                        );
+                      })}
+                    </>
+                  )}
                 </select>
               </div>
 

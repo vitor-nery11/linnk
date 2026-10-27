@@ -88,10 +88,20 @@ export const AuditView: React.FC = () => {
       {/* Lista de Logs */}
       <div className="bg-white rounded-3xl border border-linnk-stone-300/80 shadow-arch-card overflow-hidden">
         <div className="divide-y divide-linnk-stone-200">
-          {filtered.map((log) => (
-            <div key={log.id} className="p-5 hover:bg-linnk-stone-50/80 transition-colors">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
+          {filtered.length === 0 ? (
+            <div className="p-12 text-center space-y-2">
+              <ShieldAlert className="w-8 h-8 text-linnk-stone-300 mx-auto" />
+              <h4 className="font-display font-semibold text-sm text-linnk-obsidian">
+                Nenhum evento de auditoria localizado
+              </h4>
+              <p className="text-xs text-linnk-stone-500">
+                Os registros de conformidade e ações operacionais serão listados cronologicamente aqui.
+              </p>
+            </div>
+          ) : (
+            filtered.map((log) => (
+              <div key={log.id} className="p-5 hover:bg-linnk-stone-50/80 transition-colors">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-linnk-obsidian text-white font-mono text-[10px] font-bold">
                     {log.module}
                   </span>
@@ -108,15 +118,15 @@ export const AuditView: React.FC = () => {
                     {log.userName} ({formatRoleLabel(log.userRole)}) · {formatDateTimeBR(log.createdAt)}
                   </span>
                 </div>
+                <h4 className="font-display font-bold text-sm text-linnk-obsidian mt-2">
+                  {log.summary}
+                </h4>
+                <p className="text-xs text-linnk-stone-600 mt-1 leading-relaxed">
+                  {log.details}
+                </p>
               </div>
-              <h4 className="font-display font-bold text-sm text-linnk-obsidian mt-2">
-                {log.summary}
-              </h4>
-              <p className="text-xs text-linnk-stone-600 mt-1 leading-relaxed">
-                {log.details}
-              </p>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

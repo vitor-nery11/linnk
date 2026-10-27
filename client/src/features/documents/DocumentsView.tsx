@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   Eye,
   FileCheck2,
   FileText,
   Lock,
+  Mail,
   Printer,
+  Send,
   ShieldCheck,
   Upload,
   X,
@@ -29,6 +32,7 @@ export const DocumentsView: React.FC = () => {
     developments,
     developers,
     generateConsentTerm,
+    sendConsentTermEmail,
     uploadSignedConsentTerm,
     reviewConsentTerm,
     setActiveNav,
@@ -42,8 +46,18 @@ export const DocumentsView: React.FC = () => {
     selectedReferralId
   );
   const [uploadModalReferralId, setUploadModalReferralId] = useState<string | null>(null);
-  const [fileNameInput, setFileNameInput] = useState('termo_consentimento_assinado_cliente.pdf');
+  const [fileNameInput, setFileNameInput] = useState('');
   const [reviewNotesMap, setReviewNotesMap] = useState<Record<string, string>>({});
+
+  // Estados para modal de envio por e-mail (Resend)
+  const [emailModalReferralId, setEmailModalReferralId] = useState<string | null>(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [customMessageInput, setCustomMessageInput] = useState('');
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailFeedback, setEmailFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const visibleReferrals = referrals.filter((r) => {
     if (r.status === 'CONFLITO_REJEITADO') return false;
@@ -75,6 +89,65 @@ export const DocumentsView: React.FC = () => {
     if (!uploadModalReferralId || !fileNameInput.trim()) return;
     uploadSignedConsentTerm(uploadModalReferralId, fileNameInput.trim());
     setUploadModalReferralId(null);
+  };
+
+  const emailModalReferral = referrals.find((r) => r.id === emailModalReferralId) || null;
+  const emailModalClient = emailModalReferral
+    ? clients.find((c) => c.id === emailModalReferral.clientId)
+    : null;
+  const emailModalDev = emailModalReferral
+    ? developments.find((d) => d.id === emailModalReferral.developmentId)
+    : null;
+  const emailModalBroker = emailModalReferral
+    ? brokers.find((b) => b.id === emailModalReferral.brokerId)
+    : null;
+
+  const handleOpenEmailModal = (referralId: string) => {
+    const ref = referrals.find((r) => r.id === referralId);
+    const cli = ref ? clients.find((c) => c.id === ref.clientId) : null;
+    setEmailModalReferralId(referralId);
+    setEmailInput(cli?.email || '');
+    setCustomMessageInput('');
+    setEmailFeedback(null);
+  };
+
+  const handleSendEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!emailModalReferralId || !emailInput.trim()) return;
+
+    setIsSendingEmail(true);
+    setEmailFeedback(null);
+
+    try {
+      const res = await sendConsentTermEmail(
+        emailModalReferralId,
+        emailInput.trim(),
+        customMessageInput.trim() || undefined
+      );
+
+      if (res.ok) {
+        setEmailFeedback({
+          type: 'success',
+          message: res.message || `E-mail enviado com sucesso para ${emailInput.trim()}!`,
+        });
+        setTimeout(() => {
+          setEmailModalReferralId(null);
+          setEmailFeedback(null);
+        }, 2500);
+      } else {
+        setEmailFeedback({
+          type: 'error',
+          message: res.error || 'Falha ao disparar e-mail via Resend.',
+        });
+      }
+    } catch (err: any) {
+      setEmailFeedback({
+        type: 'error',
+        message: err.message || 'Erro inesperado ao disparar e-mail.',
+      });
+    } finally {
+      setIsSendingEmail(false);
+    }
   };
 
   return (
@@ -115,7 +188,20 @@ export const DocumentsView: React.FC = () => {
 
       {/* Lista de Documentos por Indicação */}
       <div className="grid grid-cols-1 gap-4 no-print">
-        {visibleReferrals.map((ref) => {
+        {visibleReferrals.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 border border-linnk-stone-300/80 shadow-arch-card text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-linnk-stone-100 text-linnk-stone-400 mx-auto flex items-center justify-center">
+              <FileText className="w-6 h-6" />
+            </div>
+            <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+              Nenhum termo de consentimento pendente
+            </h3>
+            <p className="text-xs text-linnk-stone-500 max-w-md mx-auto leading-relaxed">
+              Os termos de consentimento e proteção LGPD serão listados aqui assim que novas indicações forem cadastradas na plataforma.
+            </p>
+          </div>
+        ) : (
+          visibleReferrals.map((ref) => {
           const doc = documents.find((d) => d.referralId === ref.id);
           const cli = clients.find((c) => c.id === ref.clientId);
           const brk = brokers.find((b) => b.id === ref.brokerId);
@@ -166,6 +252,12 @@ export const DocumentsView: React.FC = () => {
                       Arquivo: {doc.fileName}
                     </span>
                   )}
+                  {doc?.sentAt && (
+                    <span className="inline-flex items-center gap-1 font-mono text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-0.5 rounded-full">
+                      <Mail className="w-3 h-3 text-sky-600" />
+                      Enviado p/ {doc.sentToEmail || cli?.email} em {formatDateTimeBR(doc.sentAt)}
+                    </span>
+                  )}
                 </div>
 
                 {doc?.reviewNotes && (
@@ -180,10 +272,19 @@ export const DocumentsView: React.FC = () => {
               <div className="flex flex-col sm:flex-row lg:flex-col xl:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
                 <button
                   onClick={() => setPreviewReferralId(ref.id)}
-                  className="px-4 py-2.5 rounded-2xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs flex items-center justify-center gap-1.5"
+                  className="px-4 py-2.5 rounded-2xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Eye className="w-4 h-4 text-linnk-flame" />
                   <span>Visualizar / Imprimir Termo</span>
+                </button>
+
+                <button
+                  onClick={() => handleOpenEmailModal(ref.id)}
+                  className="px-4 py-2.5 rounded-2xl bg-sky-50 hover:bg-sky-100 text-sky-900 border border-sky-200 font-display font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  title="Enviar Termo de Consentimento ao cliente por e-mail via Resend"
+                >
+                  <Mail className="w-4 h-4 text-sky-600" />
+                  <span>{doc?.sentAt ? 'Reenviar E-mail' : 'Enviar por E-mail'}</span>
                 </button>
 
                 {isBlockedByDuplicate ? (
@@ -244,7 +345,7 @@ export const DocumentsView: React.FC = () => {
                     Termo assinado enviado · Aguardando conferência da equipe LINNK
                   </div>
                 ) : (
-                  <div className="w-full lg:w-auto pt-4 lg:pt-0 border-t lg:border-t-0 border-linnk-stone-200 flex flex-col gap-2 min-w-[300px]">
+                  <div className="w-full lg:w-auto pt-4 lg:pt-0 border-t lg:border-t-0 border-linnk-stone-200 flex flex-col gap-2 sm:min-w-[300px]">
                     <input
                       type="text"
                       value={reviewNotesMap[ref.id] || ''}
@@ -291,7 +392,8 @@ export const DocumentsView: React.FC = () => {
                 ))}
             </div>
           );
-        })}
+        })
+      )}
       </div>
 
       {/* Modal de Upload Privado (Supabase Storage Key Metadata) */}
@@ -347,6 +449,140 @@ export const DocumentsView: React.FC = () => {
         </div>
       )}
 
+      {/* Modal de Envio do Termo via E-mail (Resend) */}
+      {emailModalReferral && (
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 no-print">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 border border-linnk-stone-300 shadow-obsidian space-y-5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center shrink-0">
+                  <Mail className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-lg text-linnk-obsidian leading-tight">
+                    Enviar Termo de Consentimento
+                  </h3>
+                  <p className="text-xs text-linnk-stone-600">
+                    Disparo oficial via <strong>Resend</strong> · Protocolo{' '}
+                    <span className="font-mono font-bold text-linnk-obsidian">
+                      {emailModalReferral.code}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailModalReferralId(null);
+                  setEmailFeedback(null);
+                }}
+                className="p-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-stone-600 transition-colors"
+                aria-label="Fechar modal"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Resumo do Destinatário e Empreendimento */}
+            <div className="bg-linnk-stone-50 border border-linnk-stone-200 rounded-2xl p-4 text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-linnk-stone-600">Cliente Indicado:</span>
+                <strong className="text-linnk-obsidian">{emailModalClient?.name || 'Cliente'}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-linnk-stone-600">Empreendimento:</span>
+                <strong className="text-linnk-obsidian">{emailModalDev?.name || 'Empreendimento'}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-linnk-stone-600">Corretor Credenciado:</span>
+                <strong className="text-linnk-obsidian">{emailModalBroker?.name || 'Corretor'}</strong>
+              </div>
+            </div>
+
+            {/* Feedback Alert */}
+            {emailFeedback && (
+              <div
+                className={`p-3.5 rounded-2xl text-xs flex items-start gap-2.5 ${
+                  emailFeedback.type === 'success'
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                }`}
+              >
+                {emailFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                )}
+                <div className="leading-relaxed">{emailFeedback.message}</div>
+              </div>
+            )}
+
+            <form onSubmit={handleSendEmailSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-linnk-obsidian mb-1.5">
+                  E-mail do Cliente Destinatário <span className="text-linnk-flame">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  placeholder="cliente@exemplo.com"
+                  className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 text-sm font-mono focus:border-linnk-flame focus:outline-none"
+                />
+                <p className="text-[11px] text-linnk-stone-600 mt-1">
+                  O cliente receberá o e-mail timbrado com o termo de consentimento LGPD formatado.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-linnk-obsidian mb-1.5">
+                  Mensagem Personalizada Adicional (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  value={customMessageInput}
+                  onChange={(e) => setCustomMessageInput(e.target.value)}
+                  placeholder="Ex: Olá! Conforme alinhamos, segue o termo de consentimento oficial para sua análise..."
+                  className="w-full px-3.5 py-2 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmailModalReferralId(null);
+                    setEmailFeedback(null);
+                  }}
+                  disabled={isSendingEmail}
+                  className="px-4 py-2.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-stone-700 text-xs font-display font-semibold transition-colors disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSendingEmail || !emailInput.trim()}
+                  className="px-5 py-2.5 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white text-xs font-display font-bold flex items-center gap-2 shadow-flame-sm transition-colors disabled:opacity-50"
+                >
+                  {isSendingEmail ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Disparando via Resend...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Enviar Termo via Resend</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Visualizador / Impressão do Termo de Consentimento Versionado (Folha Timbrada A4 Executiva) */}
       {previewReferral && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-start justify-center p-3 sm:p-6 overflow-y-auto print-document-sheet">
@@ -360,7 +596,7 @@ export const DocumentsView: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-display font-bold text-base text-white">
-                      Instrumento Particular de Consentimento (LGPD) & Proteção de Carteira
+                       Instrumento Particular de Consentimento (LGPD) & Proteção de Carteira
                     </h3>
                     <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 text-linnk-stone-200">
                       Folha A4 Oficial
@@ -375,6 +611,14 @@ export const DocumentsView: React.FC = () => {
               </div>
 
               <div className="flex items-center gap-2.5">
+                <button
+                  onClick={() => handleOpenEmailModal(previewReferral.id)}
+                  className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-display font-bold text-xs flex items-center gap-2 transition-colors shadow-sm"
+                  title="Enviar este termo por e-mail para o cliente via Resend"
+                >
+                  <Mail className="w-4 h-4" />
+                  <span>Enviar p/ E-mail do Cliente</span>
+                </button>
                 <button
                   onClick={() => window.print()}
                   className="px-4 py-2.5 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs flex items-center gap-2 shadow-flame-sm transition-colors"
@@ -723,8 +967,11 @@ export const DocumentsView: React.FC = () => {
                 <div className="space-y-6 pt-2">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between text-xs border-b border-linnk-stone-200 pb-2">
                     <div>
-                      <strong>Local e Data:</strong> {previewBroker?.city || 'Ilhéus / Itabuna'} —
-                      BA, {formatDateBR(previewReferral.createdAt)}.
+                      <strong>Local e Data:</strong>{' '}
+                      {previewBroker?.city
+                        ? `${previewBroker.city} — ${previewBroker.state || 'BA'}`
+                        : previewDev?.city || 'Bahia'}
+                      , {formatDateBR(previewReferral.createdAt)}.
                     </div>
                     <div className="font-mono text-[11px] text-linnk-stone-600">
                       Status Documental:{' '}

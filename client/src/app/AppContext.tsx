@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Attendance,
   AttendanceType,
@@ -19,8 +19,26 @@ import {
   ReferralStatus,
   Sale,
   User,
+  UserRole,
 } from './types';
-import { normalizeEmail, normalizePhone } from '../lib/formatters';
+import { formatDateBR, normalizeEmail, normalizePhone } from '../lib/formatters';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { SupabaseService, isValidUuid } from '../services/supabaseService';
+import { EmailService } from '../services/emailService';
+import {
+  INITIAL_ATTENDANCES,
+  INITIAL_AUDIT_LOGS,
+  INITIAL_BROKERS,
+  INITIAL_CLIENTS,
+  INITIAL_COMMISSION_CONFIG,
+  INITIAL_DEVELOPERS,
+  INITIAL_DEVELOPMENTS,
+  INITIAL_DOCUMENTS,
+  INITIAL_REFERRALS,
+  INITIAL_SALES,
+  INITIAL_TRANSACTIONS,
+  INITIAL_USERS,
+} from './initialData';
 
 interface CreateReferralInput {
   clientName: string;
@@ -59,8 +77,27 @@ interface AppContextValue {
   setActiveNav: (nav: NavSection) => void;
   selectedReferralId: string | null;
   setSelectedReferralId: (id: string | null) => void;
+  isInitialLoading: boolean;
   loginAs: (userId: string) => void;
-  logout: () => void;
+  loginWithCredentials: (
+    email: string,
+    role: UserRole,
+    password?: string
+  ) => Promise<{ ok: boolean; error?: string }>;
+  registerBroker: (input: {
+    name: string;
+    email: string;
+    phone: string;
+    creci: string;
+    city: string;
+    state: string;
+    defaultModality: Modality;
+    pixKey: string;
+    password: string;
+    adhesionTermSigned: boolean;
+    ndaTermSigned: boolean;
+  }) => Promise<{ ok: boolean; error?: string; emailConfirmationRequired?: boolean }>;
+  logout: () => Promise<void> | void;
   users: User[];
   brokers: Broker[];
   developers: Developer[];
@@ -81,6 +118,11 @@ interface AppContextValue {
     justification: string
   ) => void;
   generateConsentTerm: (referralId: string) => void;
+  sendConsentTermEmail: (
+    referralId: string,
+    recipientEmail?: string,
+    customMessage?: string
+  ) => Promise<{ ok: boolean; error?: string; message?: string; simulated?: boolean }>;
   uploadSignedConsentTerm: (referralId: string, fileName: string) => void;
   reviewConsentTerm: (referralId: string, approved: boolean, reviewNotes: string) => void;
   addAttendance: (
@@ -103,702 +145,22 @@ interface AppContextValue {
   updateCommissionConfig: (patch: Partial<CommissionRuleConfig>) => void;
   updateOperatorPermissions: (userId: string, permissions: OperatorPermissions) => void;
   toggleUserActive: (userId: string) => void;
-  createUser: (input: { name: string; email: string; role: 'ADMIN' | 'OPERATOR' | 'BROKER'; title: string }) => void;
+  createUser: (input: { name: string; email: string; role: 'ADMIN' | 'OPERATOR' | 'BROKER'; title: string; brokerId?: string }) => void;
+  updateUser: (
+    userId: string,
+    patch: {
+      name: string;
+      email: string;
+      role: UserRole;
+      title: string;
+      brokerId?: string;
+      permissions?: OperatorPermissions;
+    }
+  ) => void;
   updateCurrentUserProfile: (patch: { name?: string; email?: string; title?: string; avatarUrl?: string }) => void;
 }
 
-const INITIAL_USERS: User[] = [
-  {
-    id: 'usr-admin-1',
-    name: 'Vitor Nery',
-    email: 'vitor@linnk.com.br',
-    role: 'ADMIN',
-    title: 'Diretor de Operações & Curadoria (Administrador)',
-    active: true,
-    lastLoginAt: '2026-10-24T10:45:00-03:00',
-  },
-  {
-    id: 'usr-op-1',
-    name: 'Camila Andrade',
-    email: 'camila.operacao@linnk.com.br',
-    role: 'OPERATOR',
-    title: 'Especialista Closer & Operações (Operador)',
-    active: true,
-    lastLoginAt: '2026-10-24T10:15:00-03:00',
-    permissions: {
-      canEditBrokers: true,
-      canEditDevelopments: false,
-      canResolveDuplicates: true,
-      canRegisterSales: true,
-      canViewCommissions: true,
-      canRegisterFinance: true,
-      canViewAuditRestricted: false,
-    },
-  },
-  {
-    id: 'usr-brk-1',
-    name: 'Henrique Bastos',
-    email: 'henrique.bastos@corretorba.com.br',
-    role: 'BROKER',
-    title: 'Corretor · CRECI-BA 24.819',
-    active: true,
-    brokerId: 'brk-1',
-    lastLoginAt: '2026-10-24T09:50:00-03:00',
-  },
-  {
-    id: 'usr-op-2',
-    name: 'Lucas Figueiredo',
-    email: 'lucas.atendimento@linnk.com.br',
-    role: 'OPERATOR',
-    title: 'Analista de Triagem & Termos (Operador)',
-    active: true,
-    lastLoginAt: '2026-10-23T18:20:00-03:00',
-    permissions: {
-      canEditBrokers: false,
-      canEditDevelopments: false,
-      canResolveDuplicates: false,
-      canRegisterSales: false,
-      canViewCommissions: true,
-      canRegisterFinance: false,
-      canViewAuditRestricted: false,
-    },
-  },
-];
-
-const INITIAL_DEVELOPERS: Developer[] = [
-  {
-    id: 'devp-1',
-    name: 'M Cruz Incorporações',
-    legalName: 'M Cruz Empreendimentos Imobiliários SPE Ltda.',
-    cnpj: '34.819.204/0001-62',
-    city: 'Ilhéus · BA',
-    contactName: 'Roberto Cruz',
-    contactEmail: 'diretoria@mcruzinc.com.br',
-    contactPhone: '(73) 99981-2200',
-    paymentRuleDescription: '50% na assinatura do contrato + 50% em 30 dias após registro.',
-    active: true,
-  },
-  {
-    id: 'devp-2',
-    name: 'SSN Incorporadora',
-    legalName: 'SSN Construções e Incorporações do Sul da Bahia S.A.',
-    cnpj: '19.402.881/0001-19',
-    city: 'Ilhéus / Itabuna · BA',
-    contactName: 'Helena Sampaio',
-    contactEmail: 'parcerias@ssninc.com.br',
-    contactPhone: '(73) 99811-4500',
-    paymentRuleDescription: 'Parcela única em até 15 dias úteis após compensação do sinal.',
-    active: true,
-  },
-  {
-    id: 'devp-3',
-    name: 'Pelir Urbanismo & Construtora',
-    legalName: 'Pelir Desenvolvimento Urbano Ltda.',
-    cnpj: '41.009.512/0001-88',
-    city: 'Itabuna / Ilhéus · BA',
-    contactName: 'Eduardo Peixoto',
-    contactEmail: 'comercial@pelir.com.br',
-    contactPhone: '(73) 99104-7788',
-    paymentRuleDescription: '3 parcelas mensais acompanhando o fluxo de entrada do comprador.',
-    active: true,
-  },
-  {
-    id: 'devp-4',
-    name: 'Lunna Incorporadora',
-    legalName: 'Lunna Desenvolvimento Imobiliário SPE S.A.',
-    cnpj: '51.230.900/0001-04',
-    city: 'Ilhéus · BA',
-    contactName: 'Gustavo Nogueira',
-    contactEmail: 'operacoes@lunnainc.com.br',
-    contactPhone: '(73) 99940-1122',
-    paymentRuleDescription: 'À vista na confirmação da venda e assinatura do quadro resumo.',
-    active: true,
-  },
-];
-
-const INITIAL_DEVELOPMENTS: Development[] = [
-  {
-    id: 'devm-1',
-    developerId: 'devp-1',
-    name: 'Lançamento M Cruz · Pé na Areia',
-    city: 'Ilhéus · BA',
-    neighborhood: 'Praia dos Milionários',
-    incorporationRegistry: 'R-4 Matrícula 48.219 · 1º Ofício de Ilhéus',
-    affectationPatrimony: true,
-    constructionStatus: 'LANCAMENTO',
-    defaultCommissionRate: 4.0,
-    averageTicketCents: 98000000, // R$ 980.000,00
-    linnkSealVerified: true,
-    active: true,
-  },
-  {
-    id: 'devm-2',
-    developerId: 'devp-2',
-    name: 'Polipark Residence',
-    city: 'Itabuna / Ilhéus · BA',
-    neighborhood: 'Eixo Sul Prime',
-    incorporationRegistry: 'R-2 Matrícula 31.904 · CRI Regional',
-    affectationPatrimony: true,
-    constructionStatus: 'LANCAMENTO',
-    defaultCommissionRate: 3.5,
-    averageTicketCents: 72000000, // R$ 720.000,00
-    linnkSealVerified: true,
-    active: true,
-  },
-  {
-    id: 'devm-3',
-    developerId: 'devp-3',
-    name: 'Jardim das Hortênsias',
-    city: 'Eixo BR-415 · Itabuna/Ilhéus',
-    neighborhood: 'BR-415 Km 18',
-    incorporationRegistry: 'R-7 Matrícula 62.110 · 2º Ofício',
-    affectationPatrimony: true,
-    constructionStatus: 'EM_OBRAS',
-    defaultCommissionRate: 4.0,
-    averageTicketCents: 85000000, // R$ 850.000,00
-    linnkSealVerified: true,
-    active: true,
-  },
-  {
-    id: 'devm-4',
-    developerId: 'devp-4',
-    name: 'Lunna Mirante Sul',
-    city: 'Ilhéus · BA',
-    neighborhood: 'Pontal',
-    incorporationRegistry: 'Protocolo RI 91.402 · Em averbação final',
-    affectationPatrimony: true,
-    constructionStatus: 'PRE_LANCAMENTO',
-    defaultCommissionRate: 4.0,
-    averageTicketCents: 115000000, // R$ 1.150.000,00
-    linnkSealVerified: true,
-    active: true,
-  },
-];
-
-const INITIAL_BROKERS: Broker[] = [
-  {
-    id: 'brk-1',
-    name: 'Henrique Bastos',
-    email: 'henrique.bastos@corretorba.com.br',
-    phone: '(77) 99912-4410',
-    phoneNormalized: '77999124410',
-    creci: 'CRECI-BA 24.819',
-    city: 'Vitória da Conquista',
-    state: 'BA',
-    defaultModality: 'INDICA',
-    isFoundingMember: true,
-    adhesionTermSigned: true,
-    ndaTermSigned: true,
-    pixKey: 'henrique.bastos@corretorba.com.br',
-    active: true,
-    createdAt: '2026-10-02T09:00:00-03:00',
-  },
-  {
-    id: 'brk-2',
-    name: 'Fernanda Oliveira',
-    email: 'fernanda.imoveis@gmail.com',
-    phone: '(73) 99844-1920',
-    phoneNormalized: '73998441920',
-    creci: 'CRECI-BA 19.302',
-    city: 'Ilhéus',
-    state: 'BA',
-    defaultModality: 'CONECTA',
-    isFoundingMember: true,
-    adhesionTermSigned: true,
-    ndaTermSigned: true,
-    pixKey: '73998441920',
-    active: true,
-    createdAt: '2026-10-03T11:30:00-03:00',
-  },
-  {
-    id: 'brk-3',
-    name: 'Marcos Vinícius Rocha',
-    email: 'mvrocha.agroimoveis@outlook.com',
-    phone: '(77) 99188-7300',
-    phoneNormalized: '77991887300',
-    creci: 'CRECI-BA 31.105',
-    city: 'Luís Eduardo Magalhães',
-    state: 'BA',
-    defaultModality: 'INDICA',
-    isFoundingMember: true,
-    adhesionTermSigned: true,
-    ndaTermSigned: true,
-    pixKey: '048.912.335-20',
-    active: true,
-    createdAt: '2026-10-05T14:20:00-03:00',
-  },
-  {
-    id: 'brk-4',
-    name: 'Patrícia Medeiros',
-    email: 'patricia.medeiros@consultoriaba.com',
-    phone: '(71) 99602-8811',
-    phoneNormalized: '71996028811',
-    creci: 'PARCEIRA INDICADORA (Contrato)',
-    city: 'Salvador',
-    state: 'BA',
-    defaultModality: 'INDICA',
-    isFoundingMember: false,
-    adhesionTermSigned: true,
-    ndaTermSigned: false,
-    pixKey: 'patricia.medeiros@consultoriaba.com',
-    active: true,
-    createdAt: '2026-10-12T16:10:00-03:00',
-  },
-  {
-    id: 'brk-5',
-    name: 'Carlos Eduardo Dantas',
-    email: 'cedantas@imobiliariajequie.com.br',
-    phone: '(73) 98811-0092',
-    phoneNormalized: '73988110092',
-    creci: 'CRECI-BA 15.044',
-    city: 'Jequié',
-    state: 'BA',
-    defaultModality: 'INDICA',
-    isFoundingMember: false,
-    adhesionTermSigned: false,
-    ndaTermSigned: false,
-    pixKey: '73988110092',
-    active: false, // Inativo para demonstrar RN13
-    createdAt: '2026-09-20T10:00:00-03:00',
-  },
-];
-
-const INITIAL_CLIENTS: Client[] = [
-  {
-    id: 'cli-1',
-    name: 'Dr. Otávio Magalhães',
-    phone: '(77) 99984-5521',
-    phoneNormalized: '77999845521',
-    email: 'otavio.magalhaes@clinicaudoeste.com.br',
-    emailNormalized: 'otavio.magalhaes@clinicaudoeste.com.br',
-    city: 'Vitória da Conquista · BA',
-    notes: 'Médico cirurgião, busca unidade vista mar em Ilhéus para segunda moradia e investimento.',
-    createdAt: '2026-10-10T10:00:00-03:00',
-  },
-  {
-    id: 'cli-2',
-    name: 'Marina Costa Vasconcelos',
-    phone: '(73) 99142-8830',
-    phoneNormalized: '73991428830',
-    email: 'marina.vasconcelos@gmail.com',
-    emailNormalized: 'marina.vasconcelos@gmail.com',
-    city: 'Itabuna · BA',
-    notes: 'Interesse em condomínio fechado no eixo Ilhéus-Itabuna (BR-415).',
-    createdAt: '2026-10-14T15:10:00-03:00',
-  },
-  {
-    id: 'cli-3',
-    name: 'Ricardo Fontes Agronegócios',
-    phone: '(77) 99801-3390',
-    phoneNormalized: '77998013390',
-    email: 'ricardo@fontesagro.com.br',
-    emailNormalized: 'ricardo@fontesagro.com.br',
-    city: 'Barreiras / LEM · BA',
-    notes: 'Investidor de alta liquidez, compra recorrente no litoral sul.',
-    createdAt: '2026-10-18T09:25:00-03:00',
-  },
-  {
-    id: 'cli-4',
-    name: 'Beatriz Alencar',
-    phone: '(71) 99210-6400',
-    phoneNormalized: '71992106400',
-    email: 'beatriz.alencar@arquitetura.ba.gov.br',
-    emailNormalized: 'beatriz.alencar@arquitetura.ba.gov.br',
-    city: 'Salvador · BA',
-    notes: 'Quer conhecer o Polipark Residence na próxima viagem a Ilhéus.',
-    createdAt: '2026-10-21T11:40:00-03:00',
-  },
-  {
-    id: 'cli-5',
-    name: 'Dr. Otávio M. (Duplicidade em Análise)',
-    phone: '(77) 99984-5521',
-    phoneNormalized: '77999845521',
-    email: 'otavio.magalhaes@clinicaudoeste.com.br',
-    emailNormalized: 'otavio.magalhaes@clinicaudoeste.com.br',
-    city: 'Vitória da Conquista · BA',
-    notes: 'Indicado posteriormente por outra corretora com o mesmo WhatsApp normalizado.',
-    createdAt: '2026-10-23T16:05:00-03:00',
-  },
-  {
-    id: 'cli-6',
-    name: 'Dra. Clarice Moura',
-    phone: '(77) 99931-7840',
-    phoneNormalized: '77999317840',
-    email: 'clarice.moura@medconquista.com.br',
-    emailNormalized: 'clarice.moura@medconquista.com.br',
-    city: 'Vitória da Conquista · BA',
-    notes: 'Médica dermatologista, atendimento conduzido diretamente por Henrique na modalidade CONECTA.',
-    createdAt: '2026-10-16T11:20:00-03:00',
-  },
-  {
-    id: 'cli-7',
-    name: 'Eng. Roberto Peixoto',
-    phone: '(77) 99812-6050',
-    phoneNormalized: '77998126050',
-    email: 'roberto.peixoto@construsulba.com.br',
-    emailNormalized: 'roberto.peixoto@construsulba.com.br',
-    city: 'Vitória da Conquista · BA',
-    notes: 'Investidor interessado no pré-lançamento Lunna Mirante Sul.',
-    createdAt: '2026-10-22T09:15:00-03:00',
-  },
-];
-
-const INITIAL_REFERRALS: Referral[] = [
-  {
-    id: 'ref-1',
-    code: 'LNK-2026-001',
-    clientId: 'cli-1',
-    brokerId: 'brk-1',
-    developmentId: 'devm-1',
-    modality: 'INDICA',
-    assignedOperatorId: 'usr-op-1',
-    status: 'VENDA_CONFIRMADA',
-    documentStatus: 'APROVADO',
-    saleStatus: 'CONFIRMADA',
-    receivementStatus: 'PARCIAL',
-    payoutStatus: 'PARCIAL',
-    protectionExpiresAt: '2027-04-10T10:00:00-03:00',
-    notes: 'Cliente assinou termo no mesmo dia. Especialista LINNK fechou unidade 1201 no lançamento M Cruz.',
-    createdAt: '2026-10-10T10:00:00-03:00',
-    updatedAt: '2026-10-19T17:30:00-03:00',
-  },
-  {
-    id: 'ref-2',
-    code: 'LNK-2026-002',
-    clientId: 'cli-2',
-    brokerId: 'brk-2',
-    developmentId: 'devm-3',
-    modality: 'CONECTA',
-    assignedOperatorId: 'usr-op-1',
-    status: 'EM_ATENDIMENTO',
-    documentStatus: 'APROVADO',
-    saleStatus: 'EM_NEGOCIACAO',
-    receivementStatus: 'NAO_APLICAVEL',
-    payoutStatus: 'NAO_APLICAVEL',
-    protectionExpiresAt: '2027-04-14T15:10:00-03:00',
-    notes: 'Modalidade CONECTA: Corretora Fernanda conduz o atendimento com material e plantão da LINNK.',
-    createdAt: '2026-10-14T15:10:00-03:00',
-    updatedAt: '2026-10-22T14:00:00-03:00',
-  },
-  {
-    id: 'ref-3',
-    code: 'LNK-2026-003',
-    clientId: 'cli-3',
-    brokerId: 'brk-3',
-    developmentId: 'devm-1',
-    modality: 'INDICA',
-    assignedOperatorId: 'usr-op-2',
-    status: 'AGUARDANDO_CONSENTIMENTO',
-    documentStatus: 'RECEBIDO_AGUARDANDO_CONFERENCIA',
-    saleStatus: 'NAO_INICIADA',
-    receivementStatus: 'NAO_APLICAVEL',
-    payoutStatus: 'NAO_APLICAVEL',
-    protectionExpiresAt: '2027-04-18T09:25:00-03:00',
-    notes: 'Termo assinado manualmente recebido via PDF. Aguardando conferência do operador para liberar atendimento.',
-    createdAt: '2026-10-18T09:25:00-03:00',
-    updatedAt: '2026-10-23T11:20:00-03:00',
-  },
-  {
-    id: 'ref-4',
-    code: 'LNK-2026-004',
-    clientId: 'cli-4',
-    brokerId: 'brk-4',
-    developmentId: 'devm-2',
-    modality: 'INDICA',
-    assignedOperatorId: 'usr-op-2',
-    status: 'AGUARDANDO_CONSENTIMENTO',
-    documentStatus: 'GERADO_AGUARDANDO_ASSINATURA',
-    saleStatus: 'NAO_INICIADA',
-    receivementStatus: 'NAO_APLICAVEL',
-    payoutStatus: 'NAO_APLICAVEL',
-    protectionExpiresAt: '2027-04-21T11:40:00-03:00',
-    notes: 'Termo gerado e enviado para assinatura manual da cliente Beatriz.',
-    createdAt: '2026-10-21T11:40:00-03:00',
-    updatedAt: '2026-10-21T12:00:00-03:00',
-  },
-  {
-    id: 'ref-5',
-    code: 'LNK-2026-005',
-    clientId: 'cli-5',
-    brokerId: 'brk-4',
-    developmentId: 'devm-1',
-    modality: 'INDICA',
-    assignedOperatorId: 'usr-admin-1',
-    status: 'EM_ANALISE_DUPLICIDADE',
-    documentStatus: 'PENDENTE_GERACAO',
-    saleStatus: 'NAO_INICIADA',
-    receivementStatus: 'NAO_APLICAVEL',
-    payoutStatus: 'NAO_APLICAVEL',
-    duplicateOfReferralId: 'ref-1',
-    protectionExpiresAt: '2027-04-23T16:05:00-03:00',
-    notes: 'Conflito detectado automaticamente por telefone (77999845521) e e-mail idênticos à indicação LNK-2026-001.',
-    createdAt: '2026-10-23T16:05:00-03:00',
-    updatedAt: '2026-10-23T16:05:00-03:00',
-  },
-  {
-    id: 'ref-6',
-    code: 'LNK-2026-006',
-    clientId: 'cli-6',
-    brokerId: 'brk-1',
-    developmentId: 'devm-2',
-    modality: 'CONECTA',
-    assignedOperatorId: 'usr-op-1',
-    status: 'EM_ATENDIMENTO',
-    documentStatus: 'APROVADO',
-    saleStatus: 'EM_NEGOCIACAO',
-    receivementStatus: 'NAO_APLICAVEL',
-    payoutStatus: 'NAO_APLICAVEL',
-    protectionExpiresAt: '2027-04-16T11:20:00-03:00',
-    notes: 'Corretor Henrique conduzindo apresentação do Polipark Residence com apoio de material LINNK.',
-    createdAt: '2026-10-16T11:20:00-03:00',
-    updatedAt: '2026-10-23T15:40:00-03:00',
-  },
-  {
-    id: 'ref-7',
-    code: 'LNK-2026-007',
-    clientId: 'cli-7',
-    brokerId: 'brk-1',
-    developmentId: 'devm-4',
-    modality: 'INDICA',
-    assignedOperatorId: 'usr-op-2',
-    status: 'AGUARDANDO_CONSENTIMENTO',
-    documentStatus: 'GERADO_AGUARDANDO_ASSINATURA',
-    saleStatus: 'NAO_INICIADA',
-    receivementStatus: 'NAO_APLICAVEL',
-    payoutStatus: 'NAO_APLICAVEL',
-    protectionExpiresAt: '2027-04-22T09:15:00-03:00',
-    notes: 'Termo gerado para assinatura manual do cliente Eng. Roberto Peixoto.',
-    createdAt: '2026-10-22T09:15:00-03:00',
-    updatedAt: '2026-10-22T09:45:00-03:00',
-  },
-];
-
-const INITIAL_DOCUMENTS: ReferralDocument[] = [
-  {
-    id: 'doc-1',
-    referralId: 'ref-1',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'APROVADO',
-    generatedAt: '2026-10-10T10:05:00-03:00',
-    GeneratedByUserId: 'usr-op-1',
-    storageKey: 'private/consent-terms/2026/10/LNK-2026-001-termo-assinado.pdf',
-    fileName: 'termo_consentimento_otavio_magalhaes_assinado.pdf',
-    receivedAt: '2026-10-10T14:20:00-03:00',
-    receivedByUserId: 'usr-op-1',
-    reviewedAt: '2026-10-10T14:35:00-03:00',
-    reviewedByUserId: 'usr-admin-1',
-    reviewNotes: 'Assinatura conferida conforme documento de identificação e cláusula de 6 meses validada.',
-  },
-  {
-    id: 'doc-2',
-    referralId: 'ref-2',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'APROVADO',
-    generatedAt: '2026-10-14T15:20:00-03:00',
-    GeneratedByUserId: 'usr-op-1',
-    storageKey: 'private/consent-terms/2026/10/LNK-2026-002-termo-assinado.pdf',
-    fileName: 'termo_marina_vasconcelos_assinado.pdf',
-    receivedAt: '2026-10-15T09:10:00-03:00',
-    receivedByUserId: 'usr-op-1',
-    reviewedAt: '2026-10-15T09:40:00-03:00',
-    reviewedByUserId: 'usr-op-1',
-    reviewNotes: 'Documento legível e assinado pela cliente Marina e corretora Fernanda.',
-  },
-  {
-    id: 'doc-3',
-    referralId: 'ref-3',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'RECEBIDO_AGUARDANDO_CONFERENCIA',
-    generatedAt: '2026-10-18T09:40:00-03:00',
-    GeneratedByUserId: 'usr-op-2',
-    storageKey: 'private/consent-terms/2026/10/LNK-2026-003-termo-assinado.pdf',
-    fileName: 'termo_ricardo_fontes_assinado_scan.pdf',
-    receivedAt: '2026-10-23T11:20:00-03:00',
-    receivedByUserId: 'usr-op-2',
-  },
-  {
-    id: 'doc-4',
-    referralId: 'ref-4',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'GERADO_AGUARDANDO_ASSINATURA',
-    generatedAt: '2026-10-21T12:00:00-03:00',
-    GeneratedByUserId: 'usr-op-2',
-  },
-  {
-    id: 'doc-5',
-    referralId: 'ref-5',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'PENDENTE_GERACAO',
-  },
-  {
-    id: 'doc-6',
-    referralId: 'ref-6',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'APROVADO',
-    generatedAt: '2026-10-16T11:30:00-03:00',
-    GeneratedByUserId: 'usr-op-1',
-    storageKey: 'private/consent-terms/2026/10/LNK-2026-006-termo-assinado.pdf',
-    fileName: 'termo_clarice_moura_assinado.pdf',
-    receivedAt: '2026-10-16T16:10:00-03:00',
-    receivedByUserId: 'usr-op-1',
-    reviewedAt: '2026-10-16T16:40:00-03:00',
-    reviewedByUserId: 'usr-op-1',
-    reviewNotes: 'Termo validado para atuação em modalidade CONECTA.',
-  },
-  {
-    id: 'doc-7',
-    referralId: 'ref-7',
-    templateVersion: 'TERMO-CONSENTIMENTO-v1.2',
-    status: 'GERADO_AGUARDANDO_ASSINATURA',
-    generatedAt: '2026-10-22T09:45:00-03:00',
-    GeneratedByUserId: 'usr-op-2',
-  },
-];
-
-const INITIAL_ATTENDANCES: Attendance[] = [
-  {
-    id: 'att-1',
-    referralId: 'ref-1',
-    type: 'CONTATO_INICIAL',
-    title: 'Apresentação Consultiva LINNK (Modalidade INDICA)',
-    description: 'Contato realizado pelo closer LINNK após aprovação do termo. Apresentado book e tabela do Lançamento M Cruz.',
-    createdByUserId: 'usr-op-1',
-    createdAt: '2026-10-11T10:30:00-03:00',
-  },
-  {
-    id: 'att-2',
-    referralId: 'ref-1',
-    type: 'REUNIAO_PLANTAO',
-    title: 'Videoconferência com Memorial e Vista da Unidade 1201',
-    description: 'Dr. Otávio escolheu a unidade 1201 nascente. Simulado fluxo de pagamento direto com a M Cruz.',
-    createdByUserId: 'usr-op-1',
-    createdAt: '2026-10-15T16:00:00-03:00',
-  },
-  {
-    id: 'att-3',
-    referralId: 'ref-1',
-    type: 'PROPOSTA_COMERCIAL',
-    title: 'Proposta Aceita e Contrato Assinado (R$ 950.000,00)',
-    description: 'Contrato assinado junto à incorporadora M Cruz. Venda registrada para apuração de comissão 50/50.',
-    createdByUserId: 'usr-admin-1',
-    createdAt: '2026-10-19T17:15:00-03:00',
-  },
-  {
-    id: 'att-4',
-    referralId: 'ref-2',
-    type: 'AGENDAMENTO_VISITA',
-    title: 'Apoio ao Corretor no Stand (Modalidade CONECTA)',
-    description: 'Reservada sala VIP no stand da Pelir para a corretora Fernanda apresentar o Jardim das Hortênsias à cliente Marina.',
-    createdByUserId: 'usr-op-1',
-    createdAt: '2026-10-20T14:00:00-03:00',
-  },
-  {
-    id: 'att-5',
-    referralId: 'ref-2',
-    type: 'PROPOSTA_COMERCIAL',
-    title: 'Simulação de Proposta Lote Prime Quadra C',
-    description: 'Cliente avaliando proposta de R$ 850.000,00 com sinal parcelado em 3x.',
-    createdByUserId: 'usr-op-1',
-    createdAt: '2026-10-22T14:00:00-03:00',
-  },
-  {
-    id: 'att-6',
-    referralId: 'ref-6',
-    type: 'REUNIAO_PLANTAO',
-    title: 'Apresentação Conjunta CONECTA · Polipark Residence',
-    description: 'Reunião online conduzida pelo corretor Henrique Bastos com suporte da especialista Camila. Cliente solicitou simulação da unidade 504.',
-    createdByUserId: 'usr-op-1',
-    createdAt: '2026-10-23T15:40:00-03:00',
-  },
-];
-
-const INITIAL_SALES: Sale[] = [
-  {
-    id: 'sale-1',
-    code: 'VND-2026-001',
-    referralId: 'ref-1',
-    developmentId: 'devm-1',
-    unitIdentifier: 'Torre Mar · Unidade 1201 (Vista Definitiva)',
-    contractNumber: 'MCZ-2026-1201',
-    saleValueCents: 95000000, // R$ 950.000,00
-    saleDate: '2026-10-19T17:30:00-03:00',
-    status: 'CONFIRMADA',
-    registeredByUserId: 'usr-admin-1',
-    commission: {
-      id: 'comm-1',
-      saleId: 'sale-1',
-      ruleVersion: 'REGRA-50-50-LIQ-v1.0',
-      splitBase: 'LIQUIDA',
-      commissionRatePercent: 4.0,
-      grossCommissionCents: 3800000, // R$ 38.000,00 (4% de 950k)
-      taxDeductionRatePercent: 6.0, // Imposto NF LINNK
-      taxDeductionCents: 228000, // R$ 2.280,00
-      netCalculableBaseCents: 3572000, // R$ 35.720,00 líquidos
-      brokerSharePercent: 50,
-      brokerCommissionCents: 1786000, // R$ 17.860,00 líquido para o corretor Henrique
-      linnkSharePercent: 50,
-      linnkCommissionCents: 1786000, // R$ 17.860,00 para a LINNK
-      calculatedAt: '2026-10-19T17:30:00-03:00',
-    },
-  },
-];
-
-const INITIAL_TRANSACTIONS: FinancialTransaction[] = [
-  {
-    id: 'fin-1',
-    saleId: 'sale-1',
-    commissionId: 'comm-1',
-    type: 'RECEBIMENTO_INCORPORADORA',
-    installmentLabel: 'Parcela 1/2 · Sinal Incorporadora M Cruz',
-    amountCents: 1900000, // R$ 19.000,00 (50% da comissão bruta recebida)
-    dueDate: '2026-10-20',
-    paidAt: '2026-10-20T15:10:00-03:00',
-    status: 'CONFIRMADO',
-    receiptStorageKey: 'private/finance/2026/10/comp_recebimento_mcruz_p1.pdf',
-    createdByUserId: 'usr-admin-1',
-    createdAt: '2026-10-20T15:10:00-03:00',
-  },
-  {
-    id: 'fin-2',
-    saleId: 'sale-1',
-    commissionId: 'comm-1',
-    type: 'RECEBIMENTO_INCORPORADORA',
-    installmentLabel: 'Parcela 2/2 · 30 dias após registro',
-    amountCents: 1900000, // R$ 19.000,00 pendente
-    dueDate: '2026-11-20',
-    status: 'PENDENTE',
-    createdByUserId: 'usr-admin-1',
-    createdAt: '2026-10-20T15:10:00-03:00',
-  },
-  {
-    id: 'fin-3',
-    saleId: 'sale-1',
-    commissionId: 'comm-1',
-    type: 'REPASSE_CORRETOR',
-    installmentLabel: 'Repasse 1/2 · Corretor Henrique Bastos (50% Líquido ref. Parcela 1)',
-    amountCents: 893000, // R$ 8.930,00 repassados
-    dueDate: '2026-10-21',
-    paidAt: '2026-10-21T11:00:00-03:00',
-    status: 'CONFIRMADO',
-    receiptStorageKey: 'private/finance/2026/10/comp_pix_henrique_bastos_p1.pdf',
-    createdByUserId: 'usr-admin-1',
-    createdAt: '2026-10-21T11:00:00-03:00',
-  },
-  {
-    id: 'fin-4',
-    saleId: 'sale-1',
-    commissionId: 'comm-1',
-    type: 'REPASSE_CORRETOR',
-    installmentLabel: 'Repasse 2/2 · Corretor Henrique Bastos (Aguardando 2ª parcela M Cruz)',
-    amountCents: 893000, // R$ 8.930,00 pendente
-    dueDate: '2026-11-22',
-    status: 'PENDENTE',
-    createdByUserId: 'usr-admin-1',
-    createdAt: '2026-10-21T11:00:00-03:00',
-  },
-];
-
-const INITIAL_COMMISSION_CONFIG: CommissionRuleConfig = {
+const DEFAULT_COMMISSION_CONFIG: CommissionRuleConfig = {
   currentVersion: 'REGRA-50-50-LIQ-v1.0',
   defaultBrokerSharePercent: 50,
   defaultLinnkSharePercent: 50,
@@ -807,72 +169,9 @@ const INITIAL_COMMISSION_CONFIG: CommissionRuleConfig = {
   protectionMonths: 6,
   duplicatePriorityRule: 'PRIMEIRA_INDICACAO_VALIDA',
   allowMultipleSalesPerReferral: false,
-  updatedAt: '2026-10-01T09:00:00-03:00',
-  updatedByUserId: 'usr-admin-1',
+  updatedAt: new Date().toISOString(),
+  updatedByUserId: '',
 };
-
-const INITIAL_AUDIT_LOGS: AuditLog[] = [
-  {
-    id: 'aud-1',
-    action: 'DUPLICATE_DETECTED',
-    module: 'DUPLICATE',
-    entityId: 'ref-5',
-    summary: 'Possível duplicidade detectada automaticamente (LNK-2026-005 vs LNK-2026-001)',
-    details: 'Telefone normalizado 77999845521 e e-mail otavio.magalhaes@clinicaudoeste.com.br já vinculados à indicação ativa LNK-2026-001 (Corretor Henrique Bastos). Encaminhada para fila de análise.',
-    userId: 'usr-op-2',
-    userName: 'Lucas Figueiredo',
-    userRole: 'OPERATOR',
-    createdAt: '2026-10-23T16:05:00-03:00',
-  },
-  {
-    id: 'aud-2',
-    action: 'DOCUMENT_UPLOADED',
-    module: 'DOCUMENT',
-    entityId: 'doc-3',
-    summary: 'Termo de consentimento assinado recebido para LNK-2026-003',
-    details: 'Arquivo armazenado em chave privada: private/consent-terms/2026/10/LNK-2026-003-termo-assinado.pdf. Aguardando conferência manual.',
-    userId: 'usr-op-2',
-    userName: 'Lucas Figueiredo',
-    userRole: 'OPERATOR',
-    createdAt: '2026-10-23T11:20:00-03:00',
-  },
-  {
-    id: 'aud-3',
-    action: 'PAYOUT_CONFIRMED',
-    module: 'FINANCE',
-    entityId: 'fin-3',
-    summary: 'Repasse 1/2 confirmado ao corretor Henrique Bastos (R$ 8.930,00)',
-    details: 'Comprovante PIX anexado em private/finance/2026/10/comp_pix_henrique_bastos_p1.pdf referente à venda VND-2026-001.',
-    userId: 'usr-admin-1',
-    userName: 'Vitor Nery',
-    userRole: 'ADMIN',
-    createdAt: '2026-10-21T11:00:00-03:00',
-  },
-  {
-    id: 'aud-4',
-    action: 'SALE_REGISTERED',
-    module: 'SALE',
-    entityId: 'sale-1',
-    summary: 'Venda VND-2026-001 confirmada (R$ 950.000,00) · Regra REGRA-50-50-LIQ-v1.0',
-    details: 'Unidade 1201 no Lançamento M Cruz. Comissão bruta R$ 38.000,00, dedução fiscal 6% (R$ 2.280,00), líquido divisível R$ 35.720,00 (50% Corretor R$ 17.860,00 / 50% LINNK R$ 17.860,00).',
-    userId: 'usr-admin-1',
-    userName: 'Vitor Nery',
-    userRole: 'ADMIN',
-    createdAt: '2026-10-19T17:30:00-03:00',
-  },
-  {
-    id: 'aud-5',
-    action: 'DOCUMENT_APPROVED',
-    module: 'DOCUMENT',
-    entityId: 'doc-1',
-    summary: 'Termo de consentimento conferido e aprovado para LNK-2026-001',
-    details: 'Atendimento comercial liberado após validação de assinatura manual.',
-    userId: 'usr-admin-1',
-    userName: 'Vitor Nery',
-    userRole: 'ADMIN',
-    createdAt: '2026-10-10T14:35:00-03:00',
-  },
-];
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
@@ -880,28 +179,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeNav, setActiveNav] = useState<NavSection>('dashboard');
   const [selectedReferralId, setSelectedReferralId] = useState<string | null>(null);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
-  const [brokers, setBrokers] = useState<Broker[]>(INITIAL_BROKERS);
-  const [developers, setDevelopers] = useState<Developer[]>(INITIAL_DEVELOPERS);
-  const [developments, setDevelopments] = useState<Development[]>(INITIAL_DEVELOPMENTS);
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
-  const [referrals, setReferrals] = useState<Referral[]>(INITIAL_REFERRALS);
-  const [documents, setDocuments] = useState<ReferralDocument[]>(INITIAL_DOCUMENTS);
-  const [attendances, setAttendances] = useState<Attendance[]>(INITIAL_ATTENDANCES);
-  const [sales, setSales] = useState<Sale[]>(INITIAL_SALES);
-  const [transactions, setTransactions] = useState<FinancialTransaction[]>(INITIAL_TRANSACTIONS);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
-  const [commissionConfig, setCommissionConfig] = useState<CommissionRuleConfig>(INITIAL_COMMISSION_CONFIG);
+  const [users, setUsers] = useState<User[]>([]);
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [developers, setDevelopers] = useState<Developer[]>([]);
+  const [developments, setDevelopments] = useState<Development[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [referrals, setReferrals] = useState<Referral[]>([]);
+  const [documents, setDocuments] = useState<ReferralDocument[]>([]);
+  const [attendances, setAttendances] = useState<Attendance[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [commissionConfig, setCommissionConfig] = useState<CommissionRuleConfig>(
+    INITIAL_COMMISSION_CONFIG
+  );
 
+  // Helper para gravação simultânea de logs de auditoria (local + Supabase)
   const appendAudit = (
     action: string,
     module: AuditLog['module'],
     entityId: string,
     summary: string,
-    details: string
+    details: string,
+    actorOverride?: User
   ) => {
-    const actor = currentUser || INITIAL_USERS[0];
+    const actor = actorOverride ||
+      currentUser || {
+        id: 'system',
+        name: 'Sistema LINNK',
+        role: 'ADMIN' as UserRole,
+      };
     const newLog: AuditLog = {
       id: `aud-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       action,
@@ -915,17 +224,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
     };
     setAuditLogs((prev) => [newLog, ...prev]);
+
+    if (isSupabaseConfigured) {
+      SupabaseService.appendAuditLog(newLog).catch((err) => {
+        console.warn('[AppContext] Falha ao persistir log de auditoria no Supabase:', err);
+      });
+    }
   };
 
-  const loginAs = (userId: string) => {
-    const found = users.find((u) => u.id === userId);
-    if (!found || !found.active) return;
-    setCurrentUser(found);
-    if (found.role === 'OPERATOR' && (activeNav === 'users' || activeNav === 'audit')) {
+  const loadRemotePromiseRef = useRef<Promise<void> | null>(null);
+  const lastLoadTimeRef = useRef<number>(0);
+  const isMountedRef = useRef<boolean>(true);
+  const currentUserRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const applyAuthenticatedUser = (user: User) => {
+    currentUserRef.current = user;
+    setCurrentUser(user);
+    if (user.role === 'OPERATOR' && (activeNav === 'users' || activeNav === 'audit')) {
       setActiveNav('dashboard');
     }
     if (
-      found.role === 'BROKER' &&
+      user.role === 'BROKER' &&
       ![
         'dashboard',
         'referrals',
@@ -933,6 +256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         'attendances',
         'developments',
         'sales',
+        'profile',
       ].includes(activeNav)
     ) {
       setActiveNav('dashboard');
@@ -940,14 +264,288 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     appendAudit(
       'USER_LOGIN',
       'AUTH',
-      found.id,
-      `Sessão autenticada como ${found.name} (${found.role})`,
-      `Token Supabase Auth validado. Perfil aplicado: ${found.role}.`
+      user.id,
+      `Sessão autenticada como ${user.name} (${user.role})`,
+      `Acesso autenticado. Perfil aplicado: ${user.role}.`,
+      user
     );
   };
 
-  const logout = () => {
+  // Carregar dados de todas as entidades remotas do Supabase (com proteção anti-duplicação e debounce)
+  const loadRemoteData = async (force: boolean = false): Promise<void> => {
+    if (!isSupabaseConfigured) return;
+
+    // Se já houver um carregamento remoto em curso, reaproveita a mesma Promise em voo
+    if (loadRemotePromiseRef.current) {
+      return loadRemotePromiseRef.current;
+    }
+
+    // Debounce: se buscou há menos de 3 segundos e não é uma chamada forçada, ignora
+    const now = Date.now();
+    if (!force && now - lastLoadTimeRef.current < 3000) {
+      return;
+    }
+
+    const fetchPromise = (async () => {
+      try {
+        const data = await SupabaseService.fetchAllInitialData();
+        if (data) {
+          setUsers(data.users || []);
+          setBrokers(data.brokers || []);
+          setDevelopers(data.developers || []);
+          setDevelopments(data.developments || []);
+          setClients(data.clients || []);
+          setReferrals(data.referrals || []);
+          setDocuments(data.documents || []);
+          setAttendances(data.attendances || []);
+          setSales(data.sales || []);
+          setTransactions(data.transactions || []);
+          setAuditLogs(data.auditLogs || []);
+          if (data.commissionConfig) {
+            setCommissionConfig(data.commissionConfig);
+          }
+          lastLoadTimeRef.current = Date.now();
+        }
+      } catch (err) {
+        console.error('[AppContext] Erro ao sincronizar dados com Supabase:', err);
+      } finally {
+        loadRemotePromiseRef.current = null;
+      }
+    })();
+
+    loadRemotePromiseRef.current = fetchPromise;
+    return fetchPromise;
+  };
+
+  // Efeito inicial: verificar sessão Supabase persistida e carregar dados em background
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    // Failsafe timeout: garante que o app NUNCA fique travado no loading por mais de 1 segundo
+    const loadingTimeout = setTimeout(() => {
+      setIsInitialLoading(false);
+    }, 1000);
+
+    async function initializeSession() {
+      if (!isSupabaseConfigured) {
+        setIsInitialLoading(false);
+        return;
+      }
+
+      try {
+        const remoteDataPromise = loadRemoteData(true);
+
+        // Limita o tempo de espera pela verificação de sessão a 1.2s para nunca travar a tela
+        const sessionUserPromise = SupabaseService.getCurrentSessionUser();
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 1200)
+        );
+        const sessionUser = await Promise.race([sessionUserPromise, timeoutPromise]);
+
+        if (sessionUser) {
+          applyAuthenticatedUser(sessionUser);
+        }
+        await remoteDataPromise;
+      } catch (err) {
+        console.warn('[AppContext] Erro ao restaurar sessão Supabase:', err);
+      } finally {
+        clearTimeout(loadingTimeout);
+        setIsInitialLoading(false);
+      }
+    }
+
+    initializeSession();
+
+    // Listener para eventos de autenticação do Supabase (login, logout, refresh de token)
+    const { data: authSubscription } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_OUT') {
+        currentUserRef.current = null;
+        setCurrentUser(null);
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // Ignora evento se o usuário atual já for este (evita duplicar requests)
+        if (currentUserRef.current?.id === session.user.id) {
+          return;
+        }
+        const user = await SupabaseService.getCurrentSessionUser();
+        if (user) {
+          applyAuthenticatedUser(user);
+          loadRemoteData();
+        }
+      }
+    });
+
+    return () => {
+      isMountedRef.current = false;
+      clearTimeout(loadingTimeout);
+      authSubscription.subscription.unsubscribe();
+    };
+  }, []);
+
+  const loginAs = (userId: string) => {
+    const found = users.find((u) => u.id === userId);
+    if (!found || !found.active) return;
+    applyAuthenticatedUser(found);
+  };
+
+  const loginWithCredentials = async (
+    emailInput: string,
+    role: UserRole,
+    passwordInput?: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const cleanEmail = normalizeEmail(emailInput);
+    if (!cleanEmail) {
+      return { ok: false, error: 'Informe um e-mail válido.' };
+    }
+    const password = passwordInput || 'Password123!';
+
+    if (!isSupabaseConfigured) {
+      return { ok: false, error: 'Supabase não está configurado no ambiente.' };
+    }
+
+    // 1. Tentar autenticação via Supabase Auth
+    let authRes: { ok: boolean; error?: string; session?: any; user?: any } =
+      await SupabaseService.signIn(cleanEmail, password);
+
+    // Se o usuário não existir no Supabase Auth, tentar auto-cadastro
+    if (
+      !authRes.ok &&
+      (authRes.error?.toLowerCase().includes('invalid login credentials') ||
+        authRes.error?.toLowerCase().includes('user not found'))
+    ) {
+      const prefix = cleanEmail.split('@')[0] || 'Usuário';
+      const formattedName = prefix
+        .split(/[._-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+
+      const signUpRes = await SupabaseService.signUp(
+        cleanEmail,
+        password,
+        formattedName || 'Usuário LINNK',
+        role
+      );
+
+      if (signUpRes.ok) {
+        if (!signUpRes.session) {
+          return {
+            ok: false,
+            error:
+              'Usuário cadastrado com sucesso! Confirme seu e-mail ou desative "Confirm email" no painel do Supabase (Auth > Providers > Email) para login imediato.',
+          };
+        }
+        authRes = signUpRes;
+      } else {
+        return { ok: false, error: authRes.error || signUpRes.error };
+      }
+    } else if (!authRes.ok) {
+      if (authRes.error?.toLowerCase().includes('email not confirmed')) {
+        return {
+          ok: false,
+          error:
+            'E-mail não confirmado. Verifique seu e-mail ou desative "Confirm email" em Authentication > Providers > Email no painel do Supabase.',
+        };
+      }
+      return { ok: false, error: authRes.error };
+    }
+
+    // Autenticação bem sucedida: buscar usuário e sincronizar base diretamente do Supabase
+    const sessionUser = await SupabaseService.getCurrentSessionUser();
+    if (sessionUser) {
+      applyAuthenticatedUser(sessionUser);
+      await loadRemoteData(true);
+      return { ok: true };
+    }
+
+    return { ok: false, error: 'Falha ao recuperar perfil autenticado no Supabase.' };
+  };
+
+  const logout = async () => {
+    if (isSupabaseConfigured) {
+      await SupabaseService.signOut();
+    }
     setCurrentUser(null);
+    setActiveNav('dashboard');
+  };
+
+  const registerBroker = async (input: {
+    name: string;
+    email: string;
+    phone: string;
+    creci: string;
+    city: string;
+    state: string;
+    defaultModality: Modality;
+    pixKey: string;
+    password: string;
+    adhesionTermSigned: boolean;
+    ndaTermSigned: boolean;
+  }): Promise<{ ok: boolean; error?: string; emailConfirmationRequired?: boolean }> => {
+    const cleanEmail = normalizeEmail(input.email);
+    if (!cleanEmail) return { ok: false, error: 'Informe um e-mail válido.' };
+    const cleanPhone = normalizePhone(input.phone);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      return { ok: false, error: 'Informe um número de telefone/WhatsApp válido com DDD.' };
+    }
+    if (!input.name.trim()) return { ok: false, error: 'Informe seu nome completo.' };
+    if (!input.creci.trim()) return { ok: false, error: 'Informe seu CRECI ou identificação profissional.' };
+    if (!input.city.trim()) return { ok: false, error: 'Informe sua cidade de atuação.' };
+    if (!input.password || input.password.length < 6) {
+      return { ok: false, error: 'A senha deve conter no mínimo 6 caracteres.' };
+    }
+    if (!input.adhesionTermSigned) {
+      return { ok: false, error: 'É necessário concordar com o Termo de Adesão e Parceria Comercial LINNK.' };
+    }
+    if (!input.ndaTermSigned) {
+      return { ok: false, error: 'É necessário concordar com o Termo de Confidencialidade (NDA).' };
+    }
+
+    if (!isSupabaseConfigured) {
+      return { ok: false, error: 'Supabase não está configurado no ambiente.' };
+    }
+
+    try {
+      const regRes = await SupabaseService.registerBroker({
+        ...input,
+        email: cleanEmail,
+        phone: input.phone.trim(),
+      });
+
+      if (!regRes.ok) {
+        return { ok: false, error: regRes.error };
+      }
+
+      if (!regRes.session) {
+        return {
+          ok: true,
+          emailConfirmationRequired: true,
+        };
+      }
+
+      // Sessão ativa: aplicar usuário do Supabase e sincronizar
+      const sessionUser = await SupabaseService.getCurrentSessionUser();
+      const userId = regRes.user?.id || sessionUser?.id;
+      if (sessionUser) {
+        applyAuthenticatedUser(sessionUser);
+      } else if (userId) {
+        const userToApply: User = {
+          id: userId,
+          name: input.name.trim(),
+          email: cleanEmail,
+          role: 'BROKER' as UserRole,
+          title: 'Corretor Parceiro',
+          active: true,
+          lastLoginAt: new Date().toISOString(),
+          brokerId: regRes.broker?.id,
+        };
+        applyAuthenticatedUser(userToApply);
+      }
+      await loadRemoteData(true);
+      return { ok: true, emailConfirmationRequired: false };
+    } catch (err: any) {
+      console.warn('[AppContext] Falha ao registrar no Supabase:', err);
+      return { ok: false, error: err.message || 'Erro inesperado ao registrar corretor no Supabase.' };
+    }
   };
 
   /**
@@ -976,15 +574,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         )
       : undefined;
 
-    const newClientId = `cli-${Date.now()}`;
-    const newClient: Client = {
+    const newClientId = conflictingClient ? conflictingClient.id : `cli-${Date.now()}`;
+    const newClient: Client = conflictingClient || {
       id: newClientId,
       name: input.clientName.trim(),
       phone: input.clientPhone.trim(),
       phoneNormalized: phoneNorm,
       email: input.clientEmail.trim(),
       emailNormalized: emailNorm,
-      city: input.clientCity.trim() || 'Ilhéus / Região · BA',
+      city: input.clientCity.trim(),
       notes: input.notes,
       createdAt: now.toISOString(),
     };
@@ -1004,7 +602,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       brokerId: input.brokerId,
       developmentId: input.developmentId,
       modality: input.modality,
-      assignedOperatorId: currentUser?.id || 'usr-op-1',
+      assignedOperatorId: currentUser?.id || '',
       status: hasConflict ? 'EM_ANALISE_DUPLICIDADE' : 'AGUARDANDO_CONSENTIMENTO',
       documentStatus: initialDocStatus,
       saleStatus: 'NAO_INICIADA',
@@ -1026,7 +624,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       GeneratedByUserId: hasConflict ? undefined : currentUser?.id,
     };
 
-    setClients((prev) => [newClient, ...prev]);
+    if (!conflictingClient) {
+      setClients((prev) => [newClient, ...prev]);
+    }
     setReferrals((prev) => [newReferral, ...prev]);
     setDocuments((prev) => [newDoc, ...prev]);
 
@@ -1048,6 +648,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    // Persistência assíncrona no Supabase
+    if (isSupabaseConfigured) {
+      SupabaseService.createReferralWithClient(
+        {
+          name: newClient.name,
+          phone: newClient.phone,
+          email: newClient.email,
+          city: newClient.city,
+          notes: newClient.notes,
+        },
+        {
+          code: newReferral.code,
+          brokerId: newReferral.brokerId,
+          developmentId: newReferral.developmentId,
+          modality: newReferral.modality,
+          assignedOperatorId: newReferral.assignedOperatorId,
+          status: newReferral.status,
+          documentStatus: newReferral.documentStatus,
+          saleStatus: newReferral.saleStatus,
+          receivementStatus: newReferral.receivementStatus,
+          payoutStatus: newReferral.payoutStatus,
+          duplicateOfReferralId: newReferral.duplicateOfReferralId,
+          protectionExpiresAt: newReferral.protectionExpiresAt,
+          notes: newReferral.notes,
+        },
+        {
+          templateVersion: newDoc.templateVersion,
+          status: newDoc.status,
+          generatedAt: newDoc.generatedAt,
+          GeneratedByUserId: newDoc.GeneratedByUserId,
+        }
+      )
+        .then((result) => {
+          if (result) {
+            setClients((prev) =>
+              prev.map((c) => (c.id === newClientId ? result.client : c))
+            );
+            setReferrals((prev) =>
+              prev.map((r) => (r.id === newRefId ? result.referral : r))
+            );
+            if (result.document) {
+              setDocuments((prev) =>
+                prev.map((d) => (d.id === newDoc.id ? result.document! : d))
+              );
+            }
+          }
+        })
+        .catch((err) => {
+          console.error('[AppContext] Erro ao persistir indicação no Supabase:', err);
+        });
+    }
+
     return { referral: newReferral, hasConflict };
   };
 
@@ -1062,13 +714,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const target = referrals.find((r) => r.id === referralId);
     if (!target) return;
     const now = new Date().toISOString();
+    const nextStatus =
+      decision === 'APPROVE_NEW' ? 'AGUARDANDO_CONSENTIMENTO' : 'CONFLITO_REJEITADO';
 
     setReferrals((prev) =>
       prev.map((r) =>
         r.id === referralId
           ? {
               ...r,
-              status: decision === 'APPROVE_NEW' ? 'AGUARDANDO_CONSENTIMENTO' : 'CONFLITO_REJEITADO',
+              status: nextStatus,
               duplicateResolutionNote: justification,
               duplicateResolvedById: currentUser?.id,
               duplicateResolvedAt: now,
@@ -1087,6 +741,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }`,
       `Justificativa registrada: "${justification}"`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateReferralStatus(referralId, nextStatus, {
+        duplicateResolutionNote: justification,
+        duplicateResolvedById: currentUser?.id,
+      }).catch((e) => console.error('[AppContext] Erro ao atualizar duplicidade:', e));
+    }
   };
 
   /**
@@ -1129,6 +790,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Termo de Consentimento gerado para ${ref.code}`,
       `Modelo TERMO-CONSENTIMENTO-v1.2 emitido para assinatura manual do cliente.`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateReferralStatus(referralId, ref.status, {
+        documentStatus: 'GERADO_AGUARDANDO_ASSINATURA',
+      });
+      const targetDoc = documents.find((d) => d.referralId === referralId);
+      if (targetDoc) {
+        SupabaseService.saveReferralDocument({
+          ...targetDoc,
+          status: 'GERADO_AGUARDANDO_ASSINATURA',
+          generatedAt: now,
+          GeneratedByUserId: currentUser?.id,
+        });
+      }
+    }
+  };
+
+  /**
+   * Envio do Termo de Consentimento para o cliente via Resend (com auditoria e rastreio)
+   */
+  const sendConsentTermEmail = async (
+    referralId: string,
+    recipientEmail?: string,
+    customMessage?: string
+  ): Promise<{ ok: boolean; error?: string; message?: string; simulated?: boolean }> => {
+    const ref = referrals.find((r) => r.id === referralId);
+    if (!ref) return { ok: false, error: 'Indicação não encontrada.' };
+
+    const cli = clients.find((c) => c.id === ref.clientId);
+    const brk = brokers.find((b) => b.id === ref.brokerId);
+    const dev = developments.find((d) => d.id === ref.developmentId);
+    const developer = developers.find((dv) => dv.id === dev?.developerId);
+
+    const targetEmail = recipientEmail?.trim() || cli?.email?.trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      return { ok: false, error: 'Informe um endereço de e-mail válido para o envio do termo.' };
+    }
+
+    const emailRes = await EmailService.sendConsentTerm({
+      referralCode: ref.code,
+      clientName: cli?.name || 'Cliente',
+      clientEmail: targetEmail,
+      brokerName: brk?.name || 'Corretor Parceiro LINNK',
+      brokerPhone: brk?.phone,
+      brokerCreci: brk?.creci,
+      developmentName: dev?.name || 'Empreendimento LINNK',
+      developerName: developer?.name || developer?.legalName,
+      city: dev?.city || cli?.city || 'Bahia',
+      protectionExpiresAt: ref.protectionExpiresAt ? formatDateBR(ref.protectionExpiresAt) : undefined,
+      customMessage,
+    });
+
+    if (emailRes.ok) {
+      const now = new Date().toISOString();
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.referralId === referralId
+            ? {
+                ...d,
+                sentAt: now,
+                sentToEmail: targetEmail,
+              }
+            : d
+        )
+      );
+
+      appendAudit(
+        'CONSENT_EMAIL_SENT',
+        'DOCUMENT',
+        referralId,
+        `Termo de Consentimento ${ref.code} enviado por e-mail para ${targetEmail}`,
+        emailRes.simulated
+          ? `[Modo Simulação] Disparo simulado com sucesso para ${targetEmail}. Mensagem personalizada: "${customMessage || 'Sem mensagem adicional'}".`
+          : `Disparo via Resend confirmado (Message ID: ${emailRes.messageId || 'N/A'}). Destinatário: ${targetEmail}. Mensagem: "${customMessage || 'Sem mensagem adicional'}".`
+      );
+    }
+
+    return emailRes;
   };
 
   /**
@@ -1174,6 +913,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Arquivo de termo assinado registrado para ${ref.code}`,
       `Chave privada Supabase Storage: ${storageKey}. Aguardando conferência manual.`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateReferralStatus(referralId, ref.status, {
+        documentStatus: 'RECEBIDO_AGUARDANDO_CONFERENCIA',
+      });
+      const targetDoc = documents.find((d) => d.referralId === referralId);
+      if (targetDoc) {
+        SupabaseService.saveReferralDocument({
+          ...targetDoc,
+          status: 'RECEBIDO_AGUARDANDO_CONFERENCIA',
+          fileName,
+          storageKey,
+          receivedAt: now,
+          receivedByUserId: currentUser?.id,
+        });
+      }
+    }
   };
 
   /**
@@ -1198,13 +954,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       )
     );
 
+    const nextStatus = approved ? 'LIBERADA_ATENDIMENTO' : 'AGUARDANDO_CONSENTIMENTO';
+    const nextDocStatus = approved ? 'APROVADO' : 'REJEITADO';
+
     setReferrals((prev) =>
       prev.map((r) =>
         r.id === referralId
           ? {
               ...r,
-              documentStatus: approved ? 'APROVADO' : 'REJEITADO',
-              status: approved ? 'LIBERADA_ATENDIMENTO' : 'AGUARDANDO_CONSENTIMENTO',
+              documentStatus: nextDocStatus,
+              status: nextStatus,
               updatedAt: now,
             }
           : r
@@ -1222,6 +981,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : 'Documento rejeitado na conferência manual.'
       } Parecer: "${reviewNotes}"`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateReferralStatus(referralId, nextStatus, {
+        documentStatus: nextDocStatus,
+      });
+      const targetDoc = documents.find((d) => d.referralId === referralId);
+      if (targetDoc) {
+        SupabaseService.saveReferralDocument({
+          ...targetDoc,
+          status: nextDocStatus,
+          reviewedAt: now,
+          reviewedByUserId: currentUser?.id,
+          reviewNotes,
+        });
+      }
+    }
   };
 
   /**
@@ -1250,7 +1025,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       type,
       title,
       description,
-      createdByUserId: currentUser?.id || 'usr-op-1',
+      createdByUserId: currentUser?.id || '',
       createdAt: now,
     };
 
@@ -1291,6 +1066,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             : r
         )
       );
+      if (isSupabaseConfigured) {
+        SupabaseService.updateReferralStatus(referralId, statusToApply);
+      }
     }
 
     appendAudit(
@@ -1300,6 +1078,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Atividade registrada em ${ref.code}: ${title}`,
       `Tipo: ${type} | Modalidade: ${ref.modality} | Status: ${statusToApply}`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.createAttendance(newAtt).then((saved) => {
+        if (saved) {
+          setAttendances((prev) =>
+            prev.map((a) => (a.id === newAtt.id ? saved : a))
+          );
+        }
+      });
+    }
   };
 
   /**
@@ -1351,11 +1139,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       saleValueCents: input.saleValueCents,
       saleDate: now,
       status: 'CONFIRMADA',
-      registeredByUserId: currentUser?.id || 'usr-admin-1',
+      registeredByUserId: currentUser?.id || '',
       commission,
     };
 
     setSales((prev) => [newSale, ...prev]);
+
+    let recTx: FinancialTransaction | undefined;
+    let payTx: FinancialTransaction | undefined;
 
     if (input.createInitialInstallments) {
       const due1 = new Date();
@@ -1363,7 +1154,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const due2 = new Date();
       due2.setDate(due2.getDate() + 18);
 
-      const recTx: FinancialTransaction = {
+      recTx = {
         id: `fin-rec-${Date.now()}`,
         saleId,
         commissionId: commId,
@@ -1372,11 +1163,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         amountCents: grossCents,
         dueDate: due1.toISOString().slice(0, 10),
         status: 'PENDENTE',
-        createdByUserId: currentUser?.id || 'usr-admin-1',
+        createdByUserId: currentUser?.id || '',
         createdAt: now,
       };
 
-      const payTx: FinancialTransaction = {
+      payTx = {
         id: `fin-pay-${Date.now() + 1}`,
         saleId,
         commissionId: commId,
@@ -1385,11 +1176,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         amountCents: brokerCents,
         dueDate: due2.toISOString().slice(0, 10),
         status: 'PENDENTE',
-        createdByUserId: currentUser?.id || 'usr-admin-1',
+        createdByUserId: currentUser?.id || '',
         createdAt: now,
       };
 
-      setTransactions((prev) => [recTx, payTx, ...prev]);
+      setTransactions((prev) => [recTx!, payTx!, ...prev]);
     }
 
     setReferrals((prev) =>
@@ -1414,6 +1205,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Venda ${nextSaleCode} registrada para ${ref?.code || input.referralId}`,
       `Unidade: ${input.unitIdentifier} | Regra congelada: ${commission.ruleVersion} (${commission.splitBase}).`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.createSaleWithCommission(newSale).then((saved) => {
+        if (saved) {
+          setSales((prev) => prev.map((s) => (s.id === saleId ? saved : s)));
+          if (recTx) {
+            SupabaseService.createFinancialTransaction({
+              ...recTx,
+              saleId: saved.id,
+              commissionId: saved.commission.id,
+            });
+          }
+          if (payTx) {
+            SupabaseService.createFinancialTransaction({
+              ...payTx,
+              saleId: saved.id,
+              commissionId: saved.commission.id,
+            });
+          }
+        }
+      });
+      SupabaseService.updateReferralStatus(input.referralId, 'VENDA_CONFIRMADA');
+    }
 
     return newSale;
   };
@@ -1491,7 +1305,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       receiptStorageKey: input.receiptFileName
         ? `private/finance/2026/10/${sale.code}-${input.receiptFileName.replace(/\s+/g, '_')}`
         : undefined,
-      createdByUserId: currentUser?.id || 'usr-admin-1',
+      createdByUserId: currentUser?.id || '',
       createdAt: now,
     };
 
@@ -1508,12 +1322,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } registrado em ${sale.code}: ${input.installmentLabel}`,
       `Status: ${newTx.status} | Movimentação financeira manual registrada.`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.createFinancialTransaction(newTx).then((saved) => {
+        if (saved) {
+          setTransactions((prev) =>
+            prev.map((t) => (t.id === newTx.id ? saved : t))
+          );
+        }
+      });
+    }
   };
 
   const confirmPendingTransaction = (transactionId: string, receiptFileName?: string) => {
     const target = transactions.find((t) => t.id === transactionId);
     if (!target) return;
     const now = new Date().toISOString();
+    const finalReceipt = receiptFileName
+      ? `private/finance/2026/10/${receiptFileName.replace(/\s+/g, '_')}`
+      : target.receiptStorageKey || `private/finance/2026/10/comprovante_${target.id}.pdf`;
 
     const nextList = transactions.map((t) =>
       t.id === transactionId
@@ -1521,9 +1348,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             ...t,
             status: 'CONFIRMADO' as const,
             paidAt: now,
-            receiptStorageKey: receiptFileName
-              ? `private/finance/2026/10/${receiptFileName.replace(/\s+/g, '_')}`
-              : t.receiptStorageKey || `private/finance/2026/10/comprovante_${t.id}.pdf`,
+            receiptStorageKey: finalReceipt,
           }
         : t
     );
@@ -1538,6 +1363,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Movimentação financeira confirmada: ${target.installmentLabel}`,
       `Confirmada manualmente com comprovante privado vinculado.`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateTransactionStatus(
+        transactionId,
+        'CONFIRMADO',
+        now,
+        finalReceipt
+      );
+    }
   };
 
   /**
@@ -1563,7 +1397,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'CONFIRMADO',
       reversalOfTransactionId: orig.id,
       reversalReason: reason,
-      createdByUserId: currentUser?.id || 'usr-admin-1',
+      createdByUserId: currentUser?.id || '',
       createdAt: now,
     };
 
@@ -1590,6 +1424,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Estorno auditado sobre ${orig.installmentLabel}`,
       `Registro original preservado (${orig.id}). Motivo do estorno: "${reason}"`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateTransactionStatus(transactionId, 'ESTORNADO');
+      SupabaseService.createFinancialTransaction(reversalTx);
+    }
   };
 
   const saveBroker = (
@@ -1608,6 +1447,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Cadastro do corretor ${brokerInput.name} atualizado`,
         `Cidade: ${brokerInput.city}/${brokerInput.state} | Modalidade padrão: ${brokerInput.defaultModality}`
       );
+      if (isSupabaseConfigured) {
+        SupabaseService.saveBroker(brokerInput, id);
+      }
     } else {
       const newId = `brk-${Date.now()}`;
       const newBroker: Broker = {
@@ -1624,6 +1466,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Novo corretor parceiro cadastrado: ${newBroker.name}`,
         `CRECI/Vínculo: ${newBroker.creci} | Cidade: ${newBroker.city}`
       );
+      if (isSupabaseConfigured) {
+        SupabaseService.saveBroker(brokerInput).then((saved) => {
+          if (saved) {
+            setBrokers((prev) => prev.map((b) => (b.id === newId ? saved : b)));
+          }
+        });
+      }
     }
   };
 
@@ -1639,6 +1488,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Corretor ${target.name} ${nextState ? 'reativado' : 'inativado'}`,
       `Histórico comercial preservado integralmente.`
     );
+    if (isSupabaseConfigured) {
+      SupabaseService.toggleBrokerActive(brokerId, nextState);
+    }
   };
 
   const saveDevelopment = (devInput: Omit<Development, 'id'>, id?: string) => {
@@ -1651,6 +1503,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Empreendimento atualizado: ${devInput.name}`,
         `Comissão padrão: ${devInput.defaultCommissionRate}% | Selo LINNK: ${devInput.linnkSealVerified ? 'Sim' : 'Não'}`
       );
+      if (isSupabaseConfigured) {
+        SupabaseService.saveDevelopment(devInput, id);
+      }
     } else {
       const newId = `devm-${Date.now()}`;
       setDevelopments((prev) => [{ ...devInput, id: newId }, ...prev]);
@@ -1661,6 +1516,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Novo empreendimento na curadoria: ${devInput.name}`,
         `Registro de Incorporação: ${devInput.incorporationRegistry}`
       );
+      if (isSupabaseConfigured) {
+        SupabaseService.saveDevelopment(devInput).then((saved) => {
+          if (saved) {
+            setDevelopments((prev) => prev.map((d) => (d.id === newId ? saved : d)));
+          }
+        });
+      }
     }
   };
 
@@ -1676,11 +1538,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Empreendimento ${target.name} ${nextState ? 'ativado' : 'inativado'}`,
       `Histórico de indicações e vendas preservado.`
     );
+    if (isSupabaseConfigured) {
+      SupabaseService.toggleDevelopmentActive(devId, nextState);
+    }
   };
 
   const saveDeveloper = (devInput: Omit<Developer, 'id'>, id?: string) => {
     if (id) {
       setDevelopers((prev) => prev.map((d) => (d.id === id ? { ...devInput, id } : d)));
+      if (isSupabaseConfigured) {
+        SupabaseService.saveDeveloper(devInput, id);
+      }
     } else {
       const newId = `devp-${Date.now()}`;
       setDevelopers((prev) => [{ ...devInput, id: newId }, ...prev]);
@@ -1691,11 +1559,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `Nova incorporadora cadastrada: ${devInput.name}`,
         `CNPJ: ${devInput.cnpj} | Cidade: ${devInput.city}`
       );
+      if (isSupabaseConfigured) {
+        SupabaseService.saveDeveloper(devInput).then((saved) => {
+          if (saved) {
+            setDevelopers((prev) => prev.map((d) => (d.id === newId ? saved : d)));
+          }
+        });
+      }
     }
   };
 
   const toggleDeveloperActive = (devId: string) => {
-    setDevelopers((prev) => prev.map((d) => (d.id === devId ? { ...d, active: !d.active } : d)));
+    const target = developers.find((d) => d.id === devId);
+    if (!target) return;
+    const nextState = !target.active;
+    setDevelopers((prev) => prev.map((d) => (d.id === devId ? { ...d, active: nextState } : d)));
+    if (isSupabaseConfigured) {
+      SupabaseService.toggleDeveloperActive(devId, nextState);
+    }
   };
 
   const updateCommissionConfig = (patch: Partial<CommissionRuleConfig>) => {
@@ -1704,7 +1585,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...commissionConfig,
       ...patch,
       updatedAt: now,
-      updatedByUserId: currentUser?.id || 'usr-admin-1',
+      updatedByUserId: currentUser?.id || '',
     };
     setCommissionConfig(nextConfig);
     appendAudit(
@@ -1714,6 +1595,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Regra de comissão atualizada (${nextConfig.currentVersion})`,
       `Base: ${nextConfig.splitBase} | Divisão: ${nextConfig.defaultBrokerSharePercent}% Corretor / ${nextConfig.defaultLinnkSharePercent}% LINNK | Imposto: ${nextConfig.defaultTaxDeductionPercent}%. Vendas anteriores mantêm cálculo congelado.`
     );
+    if (isSupabaseConfigured) {
+      SupabaseService.saveCommissionConfig(nextConfig);
+    }
   };
 
   const updateOperatorPermissions = (userId: string, permissions: OperatorPermissions) => {
@@ -1730,6 +1614,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Permissões granulares atualizadas para ${target.name}`,
       `Princípio do menor privilégio aplicado.`
     );
+    if (isSupabaseConfigured) {
+      SupabaseService.updateUser(userId, { permissions });
+    }
   };
 
   const toggleUserActive = (userId: string) => {
@@ -1744,6 +1631,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Usuário interno ${target.name} ${nextState ? 'ativado' : 'inativado'}`,
       `Papel: ${target.role}`
     );
+    if (isSupabaseConfigured) {
+      SupabaseService.toggleUserActive(userId, nextState);
+    }
   };
 
   const createUser = (input: {
@@ -1751,6 +1641,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     email: string;
     role: 'ADMIN' | 'OPERATOR' | 'BROKER';
     title: string;
+    brokerId?: string;
   }) => {
     const newId = `usr-${Date.now()}`;
     const newUser: User = {
@@ -1759,6 +1650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       email: input.email,
       role: input.role,
       title: input.title,
+      brokerId: input.role === 'BROKER' ? input.brokerId : undefined,
       active: true,
       lastLoginAt: new Date().toISOString(),
       permissions:
@@ -1782,6 +1674,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Novo usuário interno criado: ${newUser.name} (${newUser.role})`,
       `E-mail: ${newUser.email}`
     );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.signUp(input.email, 'Password123!', input.name, input.role).catch((err) => {
+        console.warn('[AppContext] Erro ao cadastrar usuário no Supabase Auth:', err);
+      });
+    }
+  };
+
+  const updateUser = (
+    userId: string,
+    patch: {
+      name: string;
+      email: string;
+      role: UserRole;
+      title: string;
+      brokerId?: string;
+      permissions?: OperatorPermissions;
+    }
+  ) => {
+    const target = users.find((u) => u.id === userId);
+    if (!target) return;
+
+    const effectiveRole: UserRole =
+      target.id === currentUser?.id ? 'ADMIN' : patch.role;
+
+    const defaultOperatorPerms: OperatorPermissions = {
+      canEditBrokers: true,
+      canEditDevelopments: false,
+      canResolveDuplicates: true,
+      canRegisterSales: true,
+      canViewCommissions: true,
+      canRegisterFinance: false,
+      canViewAuditRestricted: false,
+    };
+
+    const nextPermissions =
+      effectiveRole === 'OPERATOR'
+        ? patch.permissions || target.permissions || defaultOperatorPerms
+        : undefined;
+
+    const updatedUser: User = {
+      ...target,
+      name: patch.name.trim(),
+      email: patch.email.trim(),
+      role: effectiveRole,
+      title: patch.title.trim(),
+      brokerId: effectiveRole === 'BROKER' ? patch.brokerId : undefined,
+      permissions: nextPermissions,
+    };
+
+    setUsers((prev) => prev.map((u) => (u.id === userId ? updatedUser : u)));
+    if (currentUser?.id === userId) {
+      setCurrentUser(updatedUser);
+    }
+
+    appendAudit(
+      'USER_UPDATED',
+      'CONFIG',
+      userId,
+      `Usuário atualizado pelo Administrador: ${updatedUser.name}`,
+      `Papel: ${updatedUser.role} | E-mail: ${updatedUser.email} | Cargo: ${updatedUser.title}`
+    );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.updateUser(userId, {
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        title: updatedUser.title,
+        brokerId: updatedUser.brokerId,
+        permissions: updatedUser.permissions,
+      });
+    }
   };
 
   const updateCurrentUserProfile = (patch: {
@@ -1807,6 +1772,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       `Perfil atualizado por ${updatedUser.name}`,
       `Dados pessoais / avatar atualizados na seção Meu Perfil.`
     );
+    if (isSupabaseConfigured) {
+      SupabaseService.updateUserProfile(currentUser.id, patch);
+    }
   };
 
   return (
@@ -1817,7 +1785,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveNav,
         selectedReferralId,
         setSelectedReferralId,
+        isInitialLoading,
         loginAs,
+        loginWithCredentials,
+        registerBroker,
         logout,
         users,
         brokers,
@@ -1834,6 +1805,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         createReferral,
         resolveDuplicate,
         generateConsentTerm,
+        sendConsentTermEmail,
         uploadSignedConsentTerm,
         reviewConsentTerm,
         addAttendance,
@@ -1851,6 +1823,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateOperatorPermissions,
         toggleUserActive,
         createUser,
+        updateUser,
         updateCurrentUserProfile,
       }}
     >

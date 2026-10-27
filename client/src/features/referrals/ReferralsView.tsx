@@ -57,6 +57,7 @@ export const ReferralsView: React.FC = () => {
   const [developmentFilter, setDevelopmentFilter] = useState<string>('ALL');
 
   const [showNewModal, setShowNewModal] = useState(false);
+  const [popupReferralId, setPopupReferralId] = useState<string | null>(null);
 
   // Estado do formulário de Nova Indicação
   const activeBrokers = brokers.filter((b) => b.active);
@@ -65,7 +66,7 @@ export const ReferralsView: React.FC = () => {
   const [clientName, setClientName] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [clientEmail, setClientEmail] = useState('');
-  const [clientCity, setClientCity] = useState('Vitória da Conquista · BA');
+  const [clientCity, setClientCity] = useState('');
   const [brokerId, setBrokerId] = useState(
     currentUser?.brokerId || activeBrokers[0]?.id || ''
   );
@@ -132,7 +133,7 @@ export const ReferralsView: React.FC = () => {
     currentUser?.brokerId,
   ]);
 
-  const selectedReferral = referrals.find((r) => r.id === selectedReferralId) || null;
+  const selectedReferral = referrals.find((r) => r.id === popupReferralId) || null;
   const selectedClient = selectedReferral
     ? clients.find((c) => c.id === selectedReferral.clientId)
     : null;
@@ -151,6 +152,11 @@ export const ReferralsView: React.FC = () => {
   const selectedSale = selectedReferral
     ? sales.find((s) => s.referralId === selectedReferral.id)
     : null;
+
+  const handleOpen360 = (refId: string) => {
+    setSelectedReferralId(refId);
+    setPopupReferralId(refId);
+  };
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -171,8 +177,10 @@ export const ReferralsView: React.FC = () => {
     setClientName('');
     setClientPhone('');
     setClientEmail('');
+    setClientCity('');
     setNotes('');
     setSelectedReferralId(referral.id);
+    setPopupReferralId(referral.id);
   };
 
   return (
@@ -275,105 +283,114 @@ export const ReferralsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Layout Mestre-Detalhe: Tabela + Painel 360º */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        {/* Lista de Indicações */}
-        <div
-          className={`${
-            selectedReferral ? 'xl:col-span-7' : 'xl:col-span-12'
-          } bg-white rounded-3xl border border-linnk-stone-300/80 shadow-arch-card overflow-hidden`}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-linnk-stone-50 border-b border-linnk-stone-200 text-[11px] font-mono uppercase tracking-wider text-linnk-stone-500">
-                  <th className="py-3.5 px-5">Indicação & Cliente</th>
-                  <th className="py-3.5 px-4">Corretor & Empreendimento</th>
-                  <th className="py-3.5 px-4">Modalidade</th>
-                  <th className="py-3.5 px-4">Status da Operação</th>
-                  <th className="py-3.5 px-4 text-right">Ação</th>
+      {/* Tabela de Indicações em Largura Total */}
+      <div className="bg-white rounded-3xl border border-linnk-stone-300/80 shadow-arch-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-linnk-stone-50 border-b border-linnk-stone-200 text-[11px] font-mono uppercase tracking-wider text-linnk-stone-500">
+                <th className="py-3.5 px-5">Indicação & Cliente</th>
+                <th className="py-3.5 px-4">Corretor & Empreendimento</th>
+                <th className="py-3.5 px-4">Modalidade</th>
+                <th className="py-3.5 px-4">Status da Operação</th>
+                <th className="py-3.5 px-4 text-right">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-linnk-stone-200 text-sm">
+              {filteredReferrals.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-12 px-5 text-center text-linnk-stone-500 text-xs">
+                    Nenhuma indicação encontrada. Cadastre uma nova indicação para iniciar a proteção de carteira e fluxo de atendimento.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-linnk-stone-200 text-sm">
-                {filteredReferrals.map((ref) => {
-                  const cli = clients.find((c) => c.id === ref.clientId);
-                  const brk = brokers.find((b) => b.id === ref.brokerId);
-                  const dev = developments.find((d) => d.id === ref.developmentId);
-                  const isSelected = selectedReferralId === ref.id;
+              ) : (
+                filteredReferrals.map((ref) => {
+                const cli = clients.find((c) => c.id === ref.clientId);
+                const brk = brokers.find((b) => b.id === ref.brokerId);
+                const dev = developments.find((d) => d.id === ref.developmentId);
+                const isSelected = popupReferralId === ref.id;
 
-                  return (
-                    <tr
-                      key={ref.id}
-                      onClick={() => setSelectedReferralId(ref.id)}
-                      className={`cursor-pointer transition-colors ${
-                        isSelected
-                          ? 'bg-linnk-flame-50/70'
-                          : 'hover:bg-linnk-stone-50/90'
-                      }`}
-                    >
-                      <td className="py-4 px-5">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-linnk-flame">
-                            {ref.code}
-                          </span>
-                          <span className="text-[11px] text-linnk-stone-400">
-                            {formatDateBR(ref.createdAt)}
-                          </span>
-                        </div>
-                        <div className="font-semibold text-linnk-obsidian mt-0.5">
-                          {cli?.name}
-                        </div>
-                        <div className="text-xs text-linnk-stone-500 font-mono">
-                          {cli?.phone} · {cli?.city}
-                        </div>
-                      </td>
+                return (
+                  <tr
+                    key={ref.id}
+                    onClick={() => handleOpen360(ref.id)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-linnk-flame-50/70'
+                        : 'hover:bg-linnk-stone-50/90'
+                    }`}
+                  >
+                    <td className="py-4 px-5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-linnk-flame">
+                          {ref.code}
+                        </span>
+                        <span className="text-[11px] text-linnk-stone-400">
+                          {formatDateBR(ref.createdAt)}
+                        </span>
+                      </div>
+                      <div className="font-semibold text-linnk-obsidian mt-0.5">
+                        {cli?.name}
+                      </div>
+                      <div className="text-xs text-linnk-stone-500 font-mono">
+                        {cli?.phone} · {cli?.city}
+                      </div>
+                    </td>
 
-                      <td className="py-4 px-4">
-                        <div className="font-medium text-linnk-obsidian flex items-center gap-1.5">
-                          <UserCheck className="w-3.5 h-3.5 text-linnk-flame shrink-0" />
-                          <span>{brk?.name}</span>
-                        </div>
-                        <div className="text-xs text-linnk-stone-500 mt-0.5 flex items-center gap-1">
-                          <Building2 className="w-3 h-3 shrink-0" />
-                          <span className="truncate max-w-[200px]">{dev?.name}</span>
-                        </div>
-                      </td>
+                    <td className="py-4 px-4">
+                      <div className="font-medium text-linnk-obsidian flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-linnk-flame shrink-0" />
+                        <span>{brk?.name}</span>
+                      </div>
+                      <div className="text-xs text-linnk-stone-500 mt-0.5 flex items-center gap-1">
+                        <Building2 className="w-3 h-3 shrink-0" />
+                        <span className="truncate max-w-[200px]">{dev?.name}</span>
+                      </div>
+                    </td>
 
-                      <td className="py-4 px-4">
-                        <ModalityBadge modality={ref.modality} />
-                      </td>
+                    <td className="py-4 px-4">
+                      <ModalityBadge modality={ref.modality} />
+                    </td>
 
-                      <td className="py-4 px-4">
-                        <div className="flex flex-col items-start gap-1.5">
-                          <ReferralStatusBadge status={ref.status} />
-                          <DocumentStatusBadge status={ref.documentStatus} />
-                        </div>
-                      </td>
+                    <td className="py-4 px-4">
+                      <div className="flex flex-col items-start gap-1.5">
+                        <ReferralStatusBadge status={ref.status} />
+                        <DocumentStatusBadge status={ref.documentStatus} />
+                      </div>
+                    </td>
 
-                      <td className="py-4 px-4 text-right">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedReferralId(ref.id);
-                          }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-obsidian hover:text-white text-xs font-display font-semibold transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Ficha 360º</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                    <td className="py-4 px-4 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpen360(ref.id);
+                        }}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-obsidian hover:text-white text-xs font-display font-semibold transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ficha 360º</span>
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+          </table>
         </div>
+      </div>
 
-        {/* Painel de Detalhes 360º da Indicação Selecionada */}
-        {selectedReferral && (
-          <div className="xl:col-span-5 bg-white rounded-3xl border-2 border-linnk-obsidian shadow-obsidian overflow-hidden">
-            <div className="bg-linnk-obsidian text-white p-6 flex items-start justify-between">
+      {/* Pop-up Card Flutuante: Ficha 360º da Indicação Selecionada */}
+      {selectedReferral && (
+        <div
+          className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
+          onClick={() => setPopupReferralId(null)}
+        >
+          <div
+            className="bg-white rounded-3xl max-w-2xl w-full border-2 border-linnk-obsidian shadow-obsidian overflow-hidden max-h-[90vh] flex flex-col my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-linnk-obsidian text-white p-6 flex items-start justify-between shrink-0">
               <div>
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full bg-linnk-flame text-white font-mono text-xs font-bold">
@@ -391,15 +408,15 @@ export const ReferralsView: React.FC = () => {
                 </p>
               </div>
               <button
-                onClick={() => setSelectedReferralId(null)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white"
+                onClick={() => setPopupReferralId(null)}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white cursor-pointer"
                 aria-label="Fechar detalhes"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 overflow-y-auto">
               {/* Alerta / Trava de Consentimento antes do Atendimento */}
               {selectedReferral.documentStatus !== 'APROVADO' ? (
                 <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
@@ -413,15 +430,21 @@ export const ReferralsView: React.FC = () => {
                     <div className="mt-2.5 flex flex-wrap gap-2">
                       {selectedReferral.status === 'EM_ANALISE_DUPLICIDADE' ? (
                         <button
-                          onClick={() => setActiveNav('duplicates')}
-                          className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-display font-bold text-xs"
+                          onClick={() => {
+                            setPopupReferralId(null);
+                            setActiveNav('duplicates');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-rose-600 text-white font-display font-bold text-xs cursor-pointer"
                         >
                           Resolver Duplicidade
                         </button>
                       ) : (
                         <button
-                          onClick={() => setActiveNav('documents')}
-                          className="px-3 py-1.5 rounded-xl bg-linnk-flame text-white font-display font-bold text-xs"
+                          onClick={() => {
+                            setPopupReferralId(null);
+                            setActiveNav('documents');
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-linnk-flame text-white font-display font-bold text-xs cursor-pointer"
                         >
                           Ir para Termo de Consentimento →
                         </button>
@@ -445,8 +468,11 @@ export const ReferralsView: React.FC = () => {
                     </div>
                   </div>
                   <button
-                    onClick={() => setActiveNav('attendances')}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs shrink-0"
+                    onClick={() => {
+                      setPopupReferralId(null);
+                      setActiveNav('attendances');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs shrink-0 cursor-pointer"
                   >
                     Atendimentos
                   </button>
@@ -520,8 +546,11 @@ export const ReferralsView: React.FC = () => {
                     Histórico de Atendimentos ({selectedAttendances.length})
                   </h4>
                   <button
-                    onClick={() => setActiveNav('attendances')}
-                    className="text-xs font-display font-bold text-linnk-flame hover:underline"
+                    onClick={() => {
+                      setPopupReferralId(null);
+                      setActiveNav('attendances');
+                    }}
+                    className="text-xs font-display font-bold text-linnk-flame hover:underline cursor-pointer"
                   >
                     Registrar interação →
                   </button>
@@ -555,15 +584,21 @@ export const ReferralsView: React.FC = () => {
               {/* Ações de Próxima Etapa */}
               <div className="pt-3 border-t border-linnk-stone-200 flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveNav('documents')}
-                  className="flex-1 py-2.5 px-3 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs flex items-center justify-center gap-1.5"
+                  onClick={() => {
+                    setPopupReferralId(null);
+                    setActiveNav('documents');
+                  }}
+                  className="flex-1 py-2.5 px-3 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <FileCheck2 className="w-4 h-4 text-linnk-flame" />
                   <span>Ver / Imprimir Termo</span>
                 </button>
                 <button
-                  onClick={() => setActiveNav('sales')}
-                  className="flex-1 py-2.5 px-3 rounded-xl bg-linnk-obsidian hover:bg-linnk-obsidian-800 text-white font-display font-semibold text-xs flex items-center justify-center gap-1.5"
+                  onClick={() => {
+                    setPopupReferralId(null);
+                    setActiveNav('sales');
+                  }}
+                  className="flex-1 py-2.5 px-3 rounded-xl bg-linnk-obsidian hover:bg-linnk-obsidian-800 text-white font-display font-semibold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Receipt className="w-4 h-4 text-linnk-flame" />
                   <span>
@@ -577,8 +612,8 @@ export const ReferralsView: React.FC = () => {
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Modal de Nova Indicação com Detector de Duplicidade */}
       {showNewModal && (
@@ -699,16 +734,23 @@ export const ReferralsView: React.FC = () => {
                   </label>
                   <select
                     required
-                    disabled={isBroker}
+                    disabled={isBroker || activeBrokers.length === 0}
                     value={isBroker ? currentUser?.brokerId || brokerId : brokerId}
                     onChange={(e) => setBrokerId(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none disabled:opacity-70"
                   >
-                    {activeBrokers.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name} ({b.city}) — {b.creci}
-                      </option>
-                    ))}
+                    {activeBrokers.length === 0 ? (
+                      <option value="">Nenhum corretor ativo cadastrado</option>
+                    ) : (
+                      <>
+                        <option value="">Selecione um corretor</option>
+                        {activeBrokers.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name} ({b.city}) — {b.creci}
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
 
@@ -718,15 +760,23 @@ export const ReferralsView: React.FC = () => {
                   </label>
                   <select
                     required
+                    disabled={activeDevelopments.length === 0}
                     value={developmentId}
                     onChange={(e) => setDevelopmentId(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 focus:border-linnk-flame focus:outline-none disabled:opacity-70"
                   >
-                    {activeDevelopments.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.name} ({d.city})
-                      </option>
-                    ))}
+                    {activeDevelopments.length === 0 ? (
+                      <option value="">Nenhum empreendimento ativo cadastrado</option>
+                    ) : (
+                      <>
+                        <option value="">Selecione um empreendimento</option>
+                        {activeDevelopments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name} ({d.city})
+                          </option>
+                        ))}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
@@ -812,7 +862,8 @@ export const ReferralsView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs sm:text-sm shadow-flame-sm"
+                  disabled={activeBrokers.length === 0 || activeDevelopments.length === 0}
+                  className="px-6 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 disabled:opacity-50 text-white font-display font-bold text-xs sm:text-sm shadow-flame-sm cursor-pointer"
                 >
                   {liveDuplicateCheck
                     ? 'Registrar e Enviar p/ Análise de Duplicidade'

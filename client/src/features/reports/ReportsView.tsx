@@ -111,85 +111,105 @@ export const ReportsView: React.FC = () => {
       {/* Tabelas Analíticas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Performance por Empreendimento */}
-        <div className="bg-white rounded-3xl p-6 border border-linnk-stone-300/80 shadow-arch-card">
+        <div className="bg-white rounded-3xl p-6 border border-linnk-stone-300/80 shadow-arch-card overflow-hidden">
           <div className="flex items-center gap-2 mb-4">
             <Building2 className="w-4 h-4 text-linnk-flame" />
             <h3 className="font-display font-bold text-base text-linnk-obsidian">
               Desempenho por Empreendimento da Curadoria
             </h3>
           </div>
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-linnk-stone-200 font-mono uppercase text-linnk-stone-500">
-                <th className="py-2.5">Empreendimento</th>
-                <th className="py-2.5">Indicações</th>
-                <th className="py-2.5">Vendas</th>
-                <th className="py-2.5 text-right">VGV Confirmado</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-linnk-stone-200">
-              {developments.map((d) => {
-                const dRefs = referrals.filter((r) => r.developmentId === d.id);
-                const dSales = sales.filter((s) => s.developmentId === d.id);
-                const dVgv = dSales.reduce((acc, s) => acc + s.saleValueCents, 0);
-                return (
-                  <tr key={d.id}>
-                    <td className="py-3 font-semibold text-linnk-obsidian">{d.name}</td>
-                    <td className="py-3 font-mono">{dRefs.length}</td>
-                    <td className="py-3 font-mono">{dSales.length}</td>
-                    <td className="py-3 font-mono font-bold text-right">
-                      {formatCentsToBRL(dVgv)}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-linnk-stone-200 font-mono uppercase text-linnk-stone-500">
+                  <th className="py-2.5 pr-3">Empreendimento</th>
+                  <th className="py-2.5 px-2">Indicações</th>
+                  <th className="py-2.5 px-2">Vendas</th>
+                  <th className="py-2.5 pl-2 text-right">VGV Confirmado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-linnk-stone-200">
+                {developments.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-linnk-stone-500">
+                      Nenhum empreendimento registrado.
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ) : (
+                  developments.map((d) => {
+                    const dRefs = referrals.filter((r) => r.developmentId === d.id);
+                    const dSales = sales.filter((s) => s.developmentId === d.id);
+                    const dVgv = dSales.reduce((acc, s) => acc + s.saleValueCents, 0);
+                    return (
+                      <tr key={d.id}>
+                        <td className="py-3 pr-3 font-semibold text-linnk-obsidian">{d.name}</td>
+                        <td className="py-3 px-2 font-mono">{dRefs.length}</td>
+                        <td className="py-3 px-2 font-mono">{dSales.length}</td>
+                        <td className="py-3 pl-2 font-mono font-bold text-right whitespace-nowrap">
+                          {formatCentsToBRL(dVgv)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Performance por Corretor Parceiro */}
-        <div className="bg-white rounded-3xl p-6 border border-linnk-stone-300/80 shadow-arch-card">
+        <div className="bg-white rounded-3xl p-6 border border-linnk-stone-300/80 shadow-arch-card overflow-hidden">
           <div className="flex items-center gap-2 mb-4">
             <UserCheck className="w-4 h-4 text-linnk-flame" />
             <h3 className="font-display font-bold text-base text-linnk-obsidian">
               Ranking de Corretores Parceiros & Comissões 50%
             </h3>
           </div>
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-linnk-stone-200 font-mono uppercase text-linnk-stone-500">
-                <th className="py-2.5">Corretor & Praça</th>
-                <th className="py-2.5">Indicações</th>
-                <th className="py-2.5">Modalidade</th>
-                <th className="py-2.5 text-right">Comissão 50%</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-linnk-stone-200">
-              {brokers.map((b) => {
-                const bRefs = referrals.filter((r) => r.brokerId === b.id);
-                const bSales = sales.filter((s) =>
-                  bRefs.some((r) => r.id === s.referralId)
-                );
-                const bComm = bSales.reduce(
-                  (acc, s) => acc + s.commission.brokerCommissionCents,
-                  0
-                );
-                return (
-                  <tr key={b.id}>
-                    <td className="py-3">
-                      <div className="font-semibold text-linnk-obsidian">{b.name}</div>
-                      <div className="text-[11px] text-linnk-stone-500">{b.city}</div>
-                    </td>
-                    <td className="py-3 font-mono">{bRefs.length}</td>
-                    <td className="py-3 font-mono">{b.defaultModality}</td>
-                    <td className="py-3 font-mono font-bold text-linnk-flame text-right">
-                      {formatCentsToBRL(bComm)}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-linnk-stone-200 font-mono uppercase text-linnk-stone-500">
+                  <th className="py-2.5 pr-3">Corretor & Praça</th>
+                  <th className="py-2.5 px-2">Indicações</th>
+                  <th className="py-2.5 px-2">Modalidade</th>
+                  <th className="py-2.5 pl-2 text-right">Comissão 50%</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-linnk-stone-200">
+                {brokers.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-linnk-stone-500">
+                      Nenhum corretor parceiro registrado.
                     </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                ) : (
+                  brokers.map((b) => {
+                    const bRefs = referrals.filter((r) => r.brokerId === b.id);
+                    const bSales = sales.filter((s) =>
+                      bRefs.some((r) => r.id === s.referralId)
+                    );
+                    const bComm = bSales.reduce(
+                      (acc, s) => acc + s.commission.brokerCommissionCents,
+                      0
+                    );
+                    return (
+                      <tr key={b.id}>
+                        <td className="py-3 pr-3">
+                          <div className="font-semibold text-linnk-obsidian">{b.name}</div>
+                          <div className="text-[11px] text-linnk-stone-500">{b.city}</div>
+                        </td>
+                        <td className="py-3 px-2 font-mono">{bRefs.length}</td>
+                        <td className="py-3 px-2 font-mono">{b.defaultModality}</td>
+                        <td className="py-3 pl-2 font-mono font-bold text-linnk-flame text-right whitespace-nowrap">
+                          {formatCentsToBRL(bComm)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

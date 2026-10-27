@@ -46,8 +46,28 @@ export const BrokerDashboardView: React.FC = () => {
       const found = brokers.find((b) => b.id === currentUser.brokerId);
       if (found) return found;
     }
-    return brokers[0];
-  }, [brokers, currentUser?.brokerId]);
+    if (brokers.length > 0) return brokers[0];
+    if (currentUser) {
+      return {
+        id: currentUser.brokerId || `brk-${currentUser.id}`,
+        name: currentUser.name,
+        email: currentUser.email,
+        phone: '',
+        phoneNormalized: '',
+        creci: 'CRECI',
+        city: '',
+        state: 'BA',
+        defaultModality: 'INDICA' as Modality,
+        isFoundingMember: false,
+        adhesionTermSigned: false,
+        ndaTermSigned: false,
+        pixKey: currentUser.email,
+        active: true,
+        createdAt: new Date().toISOString(),
+      };
+    }
+    return null;
+  }, [brokers, currentUser]);
 
   // Filtra exclusivamente os registros vinculados a este corretor
   const myReferrals = useMemo(
@@ -114,7 +134,7 @@ export const BrokerDashboardView: React.FC = () => {
   const [clientPhone, setClientPhone] = useState('');
   const [clientEmail, setClientEmail] = useState('');
   const [clientCity, setClientCity] = useState(
-    currentBroker ? `${currentBroker.city} · ${currentBroker.state}` : 'Vitória da Conquista · BA'
+    currentBroker?.city ? `${currentBroker.city}${currentBroker.state ? ` · ${currentBroker.state}` : ''}` : ''
   );
   const [developmentId, setDevelopmentId] = useState(activeDevelopments[0]?.id || '');
   const [refModality, setRefModality] = useState<Modality>(
@@ -123,7 +143,7 @@ export const BrokerDashboardView: React.FC = () => {
   const [refNotes, setRefNotes] = useState('');
 
   // Simulador de Comissão 50% do Corretor
-  const [simValueReais, setSimValueReais] = useState(950000);
+  const [simValueReais, setSimValueReais] = useState(500000);
   const [simRate, setSimRate] = useState(4.0);
   const simGrossCents = Math.round(simValueReais * 100 * (simRate / 100));
   const simTaxCents =
@@ -399,7 +419,14 @@ export const BrokerDashboardView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-linnk-stone-200 text-sm">
-                {myReferrals.map((ref) => {
+                {myReferrals.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-8 px-5 text-center text-linnk-stone-500 text-xs">
+                      Nenhuma indicação vinculada no momento. Cadastre sua primeira indicação para acompanhar o processo comercial.
+                    </td>
+                  </tr>
+                ) : (
+                  myReferrals.map((ref) => {
                   const cli = clients.find((c) => c.id === ref.clientId);
                   const dev = developments.find((d) => d.id === ref.developmentId);
                   const refAtts = attendances.filter((a) => a.referralId === ref.id);
@@ -480,8 +507,9 @@ export const BrokerDashboardView: React.FC = () => {
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
+                })
+              )}
+            </tbody>
             </table>
           </div>
         </div>
@@ -691,13 +719,21 @@ export const BrokerDashboardView: React.FC = () => {
                   required
                   value={developmentId}
                   onChange={(e) => setDevelopmentId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none"
+                  disabled={activeDevelopments.length === 0}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-linnk-stone-50 border border-linnk-stone-300 text-xs focus:border-linnk-flame focus:outline-none disabled:opacity-60"
                 >
-                  {activeDevelopments.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name} ({d.city}) — Comissão {d.defaultCommissionRate}%
-                    </option>
-                  ))}
+                  {activeDevelopments.length === 0 ? (
+                    <option value="">Nenhum empreendimento ativo cadastrado</option>
+                  ) : (
+                    <>
+                      <option value="">Selecione um empreendimento</option>
+                      {activeDevelopments.map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.name} ({d.city}) — Comissão {d.defaultCommissionRate}%
+                        </option>
+                      ))}
+                    </>
+                  )}
                 </select>
               </div>
 
@@ -756,7 +792,8 @@ export const BrokerDashboardView: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white text-xs font-display font-semibold"
+                  disabled={activeDevelopments.length === 0}
+                  className="px-5 py-2 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 disabled:opacity-50 text-white text-xs font-display font-semibold cursor-pointer"
                 >
                   Confirmar Indicação
                 </button>
