@@ -22,7 +22,6 @@ export const DevelopersView: React.FC = () => {
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
-  const [paymentRuleDescription, setPaymentRuleDescription] = useState('');
 
   const canEdit =
     currentUser?.role === 'ADMIN' ||
@@ -37,7 +36,6 @@ export const DevelopersView: React.FC = () => {
     setContactName('');
     setContactEmail('');
     setContactPhone('');
-    setPaymentRuleDescription('');
     setShowModal(true);
   };
 
@@ -50,7 +48,6 @@ export const DevelopersView: React.FC = () => {
     setContactName(d.contactName);
     setContactEmail(d.contactEmail);
     setContactPhone(d.contactPhone);
-    setPaymentRuleDescription(d.paymentRuleDescription);
     setShowModal(true);
   };
 
@@ -66,7 +63,7 @@ export const DevelopersView: React.FC = () => {
         contactName: contactName.trim(),
         contactEmail: contactEmail.trim(),
         contactPhone: contactPhone.trim(),
-        paymentRuleDescription: paymentRuleDescription.trim(),
+        paymentRuleDescription: editingDev?.paymentRuleDescription || '',
         active: editingDev ? editingDev.active : true,
       },
       editingDev?.id
@@ -153,12 +150,14 @@ export const DevelopersView: React.FC = () => {
                 <p className="text-xs text-linnk-stone-500">{dv.legalName}</p>
 
                 <div className="mt-4 p-3.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-200 text-xs space-y-1.5">
-                  <div>
-                    <span className="text-linnk-stone-500">Regra de Pagamento: </span>
-                    <strong className="text-linnk-obsidian">
-                      {dv.paymentRuleDescription}
-                    </strong>
-                  </div>
+                  {dv.paymentRuleDescription && (
+                    <div>
+                      <span className="text-linnk-stone-500">Regra de Pagamento: </span>
+                      <strong className="text-linnk-obsidian">
+                        {dv.paymentRuleDescription}
+                      </strong>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-4 pt-1 text-linnk-stone-600">
                     <span>Executivo: {dv.contactName}</span>
                     <span className="flex items-center gap-1">
@@ -259,17 +258,6 @@ export const DevelopersView: React.FC = () => {
                     value={contactPhone}
                     onChange={(e) => setContactPhone(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300 font-mono"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold mb-1">
-                    Regra de Pagamento de Comissão à LINNK
-                  </label>
-                  <input
-                    type="text"
-                    value={paymentRuleDescription}
-                    onChange={(e) => setPaymentRuleDescription(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-2xl bg-linnk-stone-50 border border-linnk-stone-300"
                   />
                 </div>
               </div>
