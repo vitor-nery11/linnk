@@ -21,7 +21,7 @@ import {
   User,
   UserRole,
 } from './types';
-import { formatDateBR, normalizeEmail, normalizePhone } from '../lib/formatters';
+import { formatCentsToBRL, formatDateBR, normalizeEmail, normalizePhone } from '../lib/formatters';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { SupabaseService, isValidUuid } from '../services/supabaseService';
 import { EmailService } from '../services/emailService';
@@ -140,6 +140,7 @@ interface AppContextValue {
   registerTransaction: (input: RegisterTransactionInput) => void;
   confirmPendingTransaction: (transactionId: string, receiptFileName?: string) => void;
   reverseTransaction: (transactionId: string, reason: string) => void;
+  reopenTransactionForConfirmation: (transactionId: string) => void;
   saveBroker: (broker: Omit<Broker, 'id' | 'createdAt' | 'phoneNormalized'>, id?: string) => void;
   toggleBrokerActive: (brokerId: string) => void;
   saveDevelopment: (dev: Omit<Development, 'id'>, id?: string) => void;
@@ -1474,7 +1475,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: now,
     };
 
+    // Cria automaticamente nova parcela pendente para reconfirmar o recebimento ou repasse pós-estorno
+    const newPendingTx: FinancialTransaction = {
+      id: `fin-pend-${Date.now() + 1}`,
+      saleId: orig.saleId,
+      commissionId: orig.commissionId,
+      type: orig.type,
+      installmentLabel: `${
+        orig.type === 'RECEBIMENTO_INCORPORADORA'
+          ? 'Nova Entrada Incorporadora'
+          : 'Novo Repasse Corretor'
+      } (pós-estorno)`,
+      amountCents: Math.abs(orig.amountCents),
+      dueDate: now.slice(0, 10),
+      status: 'PENDENTE',
+      createdByUserId: currentUser?.id || '',
+      createdAt: now,
+    };
+
     const nextList = [
+      newPendingTx,
       reversalTx,
       ...transactions.map((t) =>
         t.id === transactionId
@@ -1495,12 +1515,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       'FINANCE',
       reversalTx.id,
       `Estorno auditado sobre ${orig.installmentLabel}`,
-      `Registro original preservado (${orig.id}). Motivo do estorno: "${reason}"`
+      `Registro original preservado (${orig.id}). Motivo do estorno: "${reason}". Novo lançamento pendente adicionado para confirmação.`
     );
 
     if (isSupabaseConfigured) {
       SupabaseService.updateTransactionStatus(transactionId, 'ESTORNADO');
       SupabaseService.createFinancialTransaction(reversalTx);
+      SupabaseService.createFinancialTransaction(newPendingTx);
+    }
+  };
+
+  /**
+   * Reabrir lançamento pendente para confirmar valor após estorno
+   */
+  const reopenTransactionForConfirmation = (transactionId: string) => {
+    const orig = transactions.find((t) => t.id === transactionId);
+    if (!orig || orig.status !== 'ESTORNADO') return;
+    const now = new Date().toISOString();
+
+    const targetType =
+      orig.type === 'ESTORNO_RECEBIMENTO'
+        ? 'RECEBIMENTO_INCORPORADORA'
+        : orig.type === 'ESTORNO_REPASSE'
+        ? 'REPASSE_CORRETOR'
+        : orig.type;
+
+    const newPendingTx: FinancialTransaction = {
+      id: `fin-pend-${Date.now()}`,
+      saleId: orig.saleId,
+      commissionId: orig.commissionId,
+      type: targetType,
+      installmentLabel: `${
+        targetType === 'RECEBIMENTO_INCORPORADORA'
+          ? 'Entrada Incorporadora'
+          : 'Repasse Corretor'
+      } (Reaberto para Confirmação)`,
+      amountCents: Math.abs(orig.amountCents),
+      dueDate: now.slice(0, 10),
+      status: 'PENDENTE',
+      createdByUserId: currentUser?.id || '',
+      createdAt: now,
+    };
+
+    const nextList = [newPendingTx, ...transactions];
+    setTransactions(nextList);
+    syncFinancialStatuses(orig.saleId, nextList);
+
+    appendAudit(
+      'FINANCE_REOPENED',
+      'FINANCE',
+      newPendingTx.id,
+      `Lançamento reaberto para confirmação: ${newPendingTx.installmentLabel}`,
+      `Valor: ${formatCentsToBRL(newPendingTx.amountCents)}. Reaberto a partir do estorno ${orig.id}.`
+    );
+
+    if (isSupabaseConfigured) {
+      SupabaseService.createFinancialTransaction(newPendingTx);
     }
   };
 
@@ -1886,6 +1956,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         registerTransaction,
         confirmPendingTransaction,
         reverseTransaction,
+        reopenTransactionForConfirmation,
         saveBroker,
         toggleBrokerActive,
         saveDevelopment,

@@ -36,12 +36,34 @@ export const SalesFinanceView: React.FC = () => {
     registerTransaction,
     confirmPendingTransaction,
     reverseTransaction,
+    reopenTransactionForConfirmation,
   } = useApp();
 
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showTxModalForSaleId, setShowTxModalForSaleId] = useState<string | null>(null);
   const [reversalTargetTxId, setReversalTargetTxId] = useState<string | null>(null);
   const [reversalReason, setReversalReason] = useState('');
+
+  const openTxModalFor = (
+    saleId: string,
+    type: 'RECEBIMENTO_INCORPORADORA' | 'REPASSE_CORRETOR',
+    amountCents?: number,
+    label?: string,
+    confirmNow: boolean = false
+  ) => {
+    setTxType(type);
+    setTxAmountInput(amountCents ? formatCentsToBRL(amountCents) : '');
+    setTxLabel(
+      label ||
+        (type === 'RECEBIMENTO_INCORPORADORA'
+          ? 'Recebimento Entrada Incorporadora'
+          : 'Repasse 50% Corretor Parceiro')
+    );
+    setTxDueDate(new Date().toISOString().slice(0, 10));
+    setTxConfirmNow(confirmNow);
+    setTxReceiptFile('');
+    setShowTxModalForSaleId(saleId);
+  };
 
   // Permissões de acesso
   const isBroker = currentUser?.role === 'BROKER';
@@ -241,6 +263,13 @@ export const SalesFinanceView: React.FC = () => {
           sale.commission.brokerCommissionCents - netPaidCents
         );
 
+        const hasReversal = saleTxs.some(
+          (t) =>
+            t.status === 'ESTORNADO' ||
+            t.type === 'ESTORNO_RECEBIMENTO' ||
+            t.type === 'ESTORNO_REPASSE'
+        );
+
         return (
           <div
             key={sale.id}
@@ -290,6 +319,69 @@ export const SalesFinanceView: React.FC = () => {
                 )}
               </div>
             </div>
+
+            {/* Aviso de Estorno com Ações Rápidas de Reconfirmação */}
+            {hasReversal && (
+              <div className="bg-amber-50 border-b border-amber-200 p-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>
+                    <strong>Venda com Estorno:</strong> As opções para confirmar o valor de entrada
+                    da incorporadora e o repasse do corretor foram reativadas.
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {pendingReceiveBalanceCents > 0 && canRegisterFinance && (
+                    <button
+                      onClick={() => {
+                        const existingPending = saleTxs.find(
+                          (t) => t.type === 'RECEBIMENTO_INCORPORADORA' && t.status === 'PENDENTE'
+                        );
+                        if (existingPending) {
+                          confirmPendingTransaction(existingPending.id);
+                        } else {
+                          openTxModalFor(
+                            sale.id,
+                            'RECEBIMENTO_INCORPORADORA',
+                            pendingReceiveBalanceCents,
+                            'Entrada Incorporadora (pós-estorno)',
+                            true
+                          );
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Confirmar Entrada ({formatCentsToBRL(pendingReceiveBalanceCents)})</span>
+                    </button>
+                  )}
+                  {pendingPayoutBalanceCents > 0 && canRegisterFinance && (
+                    <button
+                      onClick={() => {
+                        const existingPending = saleTxs.find(
+                          (t) => t.type === 'REPASSE_CORRETOR' && t.status === 'PENDENTE'
+                        );
+                        if (existingPending) {
+                          confirmPendingTransaction(existingPending.id);
+                        } else {
+                          openTxModalFor(
+                            sale.id,
+                            'REPASSE_CORRETOR',
+                            pendingPayoutBalanceCents,
+                            'Repasse 50% Corretor Parceiro (pós-estorno)',
+                            true
+                          );
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs inline-flex items-center gap-1 cursor-pointer shadow-xs"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Confirmar Repasse ({formatCentsToBRL(pendingPayoutBalanceCents)})</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Memória de Cálculo Imutável + Saldos Separados */}
             <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 border-b border-linnk-stone-200 bg-linnk-stone-50/60">
@@ -376,6 +468,30 @@ export const SalesFinanceView: React.FC = () => {
                       {formatCentsToBRL(pendingReceiveBalanceCents)}
                     </strong>
                   </div>
+                  {canRegisterFinance && pendingReceiveBalanceCents > 0 && (
+                    <button
+                      onClick={() => {
+                        const existingPending = saleTxs.find(
+                          (t) => t.type === 'RECEBIMENTO_INCORPORADORA' && t.status === 'PENDENTE'
+                        );
+                        if (existingPending) {
+                          confirmPendingTransaction(existingPending.id);
+                        } else {
+                          openTxModalFor(
+                            sale.id,
+                            'RECEBIMENTO_INCORPORADORA',
+                            pendingReceiveBalanceCents,
+                            'Entrada Incorporadora',
+                            true
+                          );
+                        }
+                      }}
+                      className="mt-3 w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Confirmar Entrada da Incorporadora ({formatCentsToBRL(pendingReceiveBalanceCents)})</span>
+                    </button>
+                  )}
                 </div>
 
                 <div className="bg-white rounded-2xl p-5 border border-linnk-stone-200/90 flex flex-col justify-between">
@@ -400,6 +516,30 @@ export const SalesFinanceView: React.FC = () => {
                       {formatCentsToBRL(pendingPayoutBalanceCents)}
                     </strong>
                   </div>
+                  {canRegisterFinance && pendingPayoutBalanceCents > 0 && (
+                    <button
+                      onClick={() => {
+                        const existingPending = saleTxs.find(
+                          (t) => t.type === 'REPASSE_CORRETOR' && t.status === 'PENDENTE'
+                        );
+                        if (existingPending) {
+                          confirmPendingTransaction(existingPending.id);
+                        } else {
+                          openTxModalFor(
+                            sale.id,
+                            'REPASSE_CORRETOR',
+                            pendingPayoutBalanceCents,
+                            'Repasse 50% Corretor Parceiro',
+                            true
+                          );
+                        }
+                      }}
+                      className="mt-3 w-full py-2 px-3 rounded-xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Confirmar Repasse do Corretor ({formatCentsToBRL(pendingPayoutBalanceCents)})</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -511,27 +651,52 @@ export const SalesFinanceView: React.FC = () => {
                           </td>
 
                           <td className="py-3.5 px-4 text-right">
-                            {canRegisterFinance && tx.status === 'PENDENTE' && (
-                              <button
-                                onClick={() => confirmPendingTransaction(tx.id)}
-                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-display font-bold text-xs inline-flex items-center gap-1"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Confirmar Baixa</span>
-                              </button>
-                            )}
-
-                            {canRegisterFinance &&
-                              tx.status === 'CONFIRMADO' &&
-                              !isReversal && (
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {canRegisterFinance && tx.status === 'PENDENTE' && (
                                 <button
-                                  onClick={() => setReversalTargetTxId(tx.id)}
-                                  className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-display font-semibold text-xs inline-flex items-center gap-1"
+                                  onClick={() => confirmPendingTransaction(tx.id)}
+                                  className={`px-3 py-1.5 rounded-xl text-white font-display font-bold text-xs inline-flex items-center gap-1 cursor-pointer shadow-xs ${
+                                    tx.type === 'RECEBIMENTO_INCORPORADORA'
+                                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                                      : 'bg-linnk-flame hover:bg-linnk-flame-600'
+                                  }`}
                                 >
-                                  <RotateCcw className="w-3.5 h-3.5" />
-                                  <span>Estornar</span>
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  <span>
+                                    {tx.type === 'RECEBIMENTO_INCORPORADORA'
+                                      ? 'Confirmar Entrada'
+                                      : 'Confirmar Repasse'}
+                                  </span>
                                 </button>
                               )}
+
+                              {canRegisterFinance && tx.status === 'ESTORNADO' && (
+                                <button
+                                  onClick={() => reopenTransactionForConfirmation(tx.id)}
+                                  className="px-3 py-1.5 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian border border-linnk-stone-300 font-display font-semibold text-xs inline-flex items-center gap-1 cursor-pointer"
+                                  title="Adicionar novamente lançamento pendente para confirmar valor"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 text-linnk-flame" />
+                                  <span>
+                                    {tx.type === 'RECEBIMENTO_INCORPORADORA'
+                                      ? 'Reabrir Entrada'
+                                      : 'Reabrir Repasse'}
+                                  </span>
+                                </button>
+                              )}
+
+                              {canRegisterFinance &&
+                                tx.status === 'CONFIRMADO' &&
+                                !isReversal && (
+                                  <button
+                                    onClick={() => setReversalTargetTxId(tx.id)}
+                                    className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-display font-semibold text-xs inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                    <span>Estornar</span>
+                                  </button>
+                                )}
+                            </div>
                           </td>
                         </tr>
                       );
