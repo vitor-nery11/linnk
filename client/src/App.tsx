@@ -26,11 +26,11 @@ const AppRouter: React.FC = () => {
   if (isInitialLoading) {
     return (
       <div className="min-h-screen bg-[#080605] flex flex-col items-center justify-center p-4 selection:bg-linnk-flame selection:text-white">
-        <div className="flex flex-col items-center gap-6">
+        <div className="flex flex-col items-center gap-2.5 text-center">
           <BrandLogo variant="dark" size="lg" />
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-3 border-orange-500/20 border-t-[#f95721] rounded-full animate-spin" />
-            <p className="text-xs text-neutral-400 font-medium tracking-wide">
+          <div className="flex flex-col items-center gap-1.5">
+            <div className="w-[18px] h-[18px] border-2 border-orange-500/25 border-t-[#f95721] rounded-full animate-spin" />
+            <p className="text-[11.5px] text-neutral-400 font-medium tracking-wide text-center">
               Carregando LINNK...
             </p>
           </div>
