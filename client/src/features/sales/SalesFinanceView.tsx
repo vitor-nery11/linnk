@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowDownLeft,
   ArrowUpRight,
   Calculator,
@@ -10,10 +11,12 @@ import {
   Receipt,
   RotateCcw,
   ShieldCheck,
+  Trash2,
   Wallet,
   X,
 } from 'lucide-react';
 import { useApp } from '../../app/AppContext';
+import { Sale, FinancialTransaction } from '../../app/types';
 import {
   formatCentsToBRL,
   formatDateBR,
@@ -33,7 +36,9 @@ export const SalesFinanceView: React.FC = () => {
     transactions,
     commissionConfig,
     registerSale,
+    deleteSale,
     registerTransaction,
+    deleteTransaction,
     confirmPendingTransaction,
     reverseTransaction,
     reopenTransactionForConfirmation,
@@ -43,6 +48,8 @@ export const SalesFinanceView: React.FC = () => {
   const [showTxModalForSaleId, setShowTxModalForSaleId] = useState<string | null>(null);
   const [reversalTargetTxId, setReversalTargetTxId] = useState<string | null>(null);
   const [reversalReason, setReversalReason] = useState('');
+  const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null);
+  const [txToDelete, setTxToDelete] = useState<FinancialTransaction | null>(null);
 
   const openTxModalFor = (
     saleId: string,
@@ -308,15 +315,27 @@ export const SalesFinanceView: React.FC = () => {
                   </span>
                 </div>
 
-                {canRegisterFinance && (
-                  <button
-                    onClick={() => setShowTxModalForSaleId(sale.id)}
-                    className="px-4 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs flex items-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>+ Registrar Recebimento / Repasse</span>
-                  </button>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {canRegisterFinance && (
+                    <button
+                      onClick={() => setShowTxModalForSaleId(sale.id)}
+                      className="px-4 py-2.5 rounded-2xl bg-linnk-flame hover:bg-linnk-flame-600 text-white font-display font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ Registrar Recebimento / Repasse</span>
+                    </button>
+                  )}
+                  {canRegisterFinance && (
+                    <button
+                      onClick={() => setSaleToDelete(sale)}
+                      className="p-2.5 rounded-2xl bg-white/10 hover:bg-rose-600 text-rose-300 hover:text-white transition-colors cursor-pointer"
+                      title="Excluir Venda do Financeiro"
+                      aria-label="Excluir Venda"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -696,6 +715,17 @@ export const SalesFinanceView: React.FC = () => {
                                     <span>Estornar</span>
                                   </button>
                                 )}
+
+                              {canRegisterFinance && (
+                                <button
+                                  onClick={() => setTxToDelete(tx)}
+                                  className="p-1.5 rounded-xl text-linnk-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                  title="Excluir lançamento financeiro"
+                                  aria-label="Excluir lançamento"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1039,6 +1069,101 @@ export const SalesFinanceView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Excluir Venda */}
+      {saleToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-rose-100 text-rose-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+                  Excluir Venda do Financeiro?
+                </h3>
+                <span className="font-mono text-xs text-linnk-flame font-bold">
+                  {saleToDelete.code}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-linnk-stone-600 leading-relaxed">
+              Tem certeza que deseja excluir a venda da unidade{' '}
+              <strong>{saleToDelete.unitIdentifier}</strong>?
+              Todos os lançamentos financeiros vinculados serão removidos e a indicação voltará para o status de atendimento.
+            </p>
+
+            <div className="pt-3 border-t border-linnk-stone-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSaleToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteSale(saleToDelete.id);
+                  setSaleToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-display font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Confirmar Exclusão</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação para Excluir Lançamento Financeiro */}
+      {txToDelete && (
+        <div className="fixed inset-0 z-50 bg-black/65 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-linnk-stone-300 shadow-obsidian overflow-hidden p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-rose-100 text-rose-600 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-lg text-linnk-obsidian">
+                  Excluir Lançamento Financeiro?
+                </h3>
+                <span className="font-mono text-xs text-linnk-stone-500">
+                  {formatCentsToBRL(txToDelete.amountCents)} · {txToDelete.status}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-linnk-stone-600 leading-relaxed">
+              Deseja excluir o lançamento <strong>{txToDelete.installmentLabel}</strong>?
+              Os saldos a receber e repassar serão recalculados automaticamente.
+            </p>
+
+            <div className="pt-3 border-t border-linnk-stone-200 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setTxToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-linnk-stone-100 hover:bg-linnk-stone-200 text-linnk-obsidian font-display font-semibold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteTransaction(txToDelete.id);
+                  setTxToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-display font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Excluir Lançamento</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

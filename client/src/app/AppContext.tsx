@@ -138,7 +138,9 @@ interface AppContextValue {
     nextReferralStatus?: ReferralStatus
   ) => void;
   registerSale: (input: CreateSaleInput) => Sale;
+  deleteSale: (saleId: string) => void;
   registerTransaction: (input: RegisterTransactionInput) => void;
+  deleteTransaction: (transactionId: string) => void;
   confirmPendingTransaction: (transactionId: string, receiptFileName?: string) => void;
   reverseTransaction: (transactionId: string, reason: string) => void;
   reopenTransactionForConfirmation: (transactionId: string) => void;
@@ -186,9 +188,12 @@ function getInitialStorage<T>(key: string, fallback: T): T {
     if (!item) return fallback;
     const parsed = JSON.parse(item);
     if (Array.isArray(fallback) && Array.isArray(parsed) && parsed.length === 0 && fallback.length > 0) {
+      if (window.localStorage.getItem(key + '_cleared') === 'true') {
+        return parsed as T;
+      }
       return fallback;
     }
-    return parsed;
+    return parsed as T;
   } catch (e) {
     return fallback;
   }
@@ -274,6 +279,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Garantir venda no Financeiro para o cliente Marcelo Scher sem texto legado de Torre Mar
     setSales((prev) => {
       if (!prev || prev.length === 0) {
+        if (typeof window !== 'undefined' && window.localStorage.getItem('linnk_sales_cleared') === 'true') {
+          return prev;
+        }
         return INITIAL_SALES;
       }
       let changed = false;
@@ -1689,6 +1697,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  /**
+   * Exclusão de venda no módulo Financeiro
+   */
+  const deleteSale = (saleId: string) => {
+    const sale = sales.find((s) => s.id === saleId);
+    if (!sale) return;
+
+    // 1. Remover venda da lista
+    const nextSales = sales.filter((s) => s.id !== saleId);
+    setSales(nextSales);
+    if (nextSales.length === 0 && typeof window !== 'undefined') {
+      window.localStorage.setItem('linnk_sales_cleared', 'true');
+    }
+
+    // 2. Remover transações vinculadas a esta venda
+    setTransactions((prev) => prev.filter((t) => t.saleId !== saleId));
+
+    // 3. Atualizar indicação vinculada (se houver) para liberar novamente para nova venda
+    setReferrals((prev) =>
+      prev.map((r) =>
+        r.id === sale.referralId
+          ? {
+              ...r,
+              saleStatus: 'EM_NEGOCIACAO',
+              status: 'EM_ATENDIMENTO',
+              receivementStatus: 'NAO_APLICAVEL',
+              payoutStatus: 'NAO_APLICAVEL',
+              updatedAt: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
+    appendAudit(
+      'SALE_DELETED',
+      'FINANCE',
+      saleId,
+      `Venda ${sale.code} excluída do Financeiro`,
+      `A venda e seus lançamentos financeiros vinculados foram removidos do sistema.`
+    );
+
+    if (isSupabaseConfigured && isValidUuid(saleId)) {
+      supabase.from('financial_transactions').delete().eq('sale_id', saleId).then(() => {
+        supabase.from('commissions').delete().eq('sale_id', saleId).then(() => {
+          supabase.from('sales').delete().eq('id', saleId);
+        });
+      });
+      if (isValidUuid(sale.referralId)) {
+        SupabaseService.updateReferralStatus(sale.referralId, 'EM_ATENDIMENTO');
+      }
+    }
+  };
+
+  /**
+   * Exclusão de lançamento financeiro individual (parcela de entrada ou repasse)
+   */
+  const deleteTransaction = (transactionId: string) => {
+    const tx = transactions.find((t) => t.id === transactionId);
+    if (!tx) return;
+
+    const nextList = transactions.filter((t) => t.id !== transactionId);
+    setTransactions(nextList);
+    syncFinancialStatuses(tx.saleId, nextList);
+
+    appendAudit(
+      'TRANSACTION_DELETED',
+      'FINANCE',
+      transactionId,
+      `Lançamento financeiro excluído: ${tx.installmentLabel}`,
+      `Tipo: ${tx.type} | Valor: ${formatCentsToBRL(tx.amountCents)}`
+    );
+
+    if (isSupabaseConfigured && isValidUuid(transactionId)) {
+      supabase.from('financial_transactions').delete().eq('id', transactionId);
+    }
+  };
+
   const saveBroker = (
     brokerInput: Omit<Broker, 'id' | 'createdAt' | 'phoneNormalized'>,
     id?: string
@@ -2068,7 +2153,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         reviewConsentTerm,
         addAttendance,
         registerSale,
+        deleteSale,
         registerTransaction,
+        deleteTransaction,
         confirmPendingTransaction,
         reverseTransaction,
         reopenTransactionForConfirmation,
