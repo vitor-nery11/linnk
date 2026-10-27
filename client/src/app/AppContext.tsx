@@ -178,6 +178,30 @@ const DEFAULT_COMMISSION_CONFIG: CommissionRuleConfig = {
   updatedByUserId: '',
 };
 
+function getInitialStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const item = window.localStorage.getItem(key);
+    if (!item) return fallback;
+    const parsed = JSON.parse(item);
+    if (Array.isArray(fallback) && Array.isArray(parsed) && parsed.length === 0 && fallback.length > 0) {
+      return fallback;
+    }
+    return parsed;
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function setLocalStorage<T>(key: string, value: T): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    // ignore
+  }
+}
+
 const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -186,20 +210,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedReferralId, setSelectedReferralId] = useState<string | null>(null);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
 
-  const [users, setUsers] = useState<User[]>([]);
-  const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [developers, setDevelopers] = useState<Developer[]>([]);
-  const [developments, setDevelopments] = useState<Development[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [referrals, setReferrals] = useState<Referral[]>([]);
-  const [documents, setDocuments] = useState<ReferralDocument[]>([]);
-  const [attendances, setAttendances] = useState<Attendance[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<User[]>(() => getInitialStorage('linnk_users', INITIAL_USERS));
+  const [brokers, setBrokers] = useState<Broker[]>(() => getInitialStorage('linnk_brokers', INITIAL_BROKERS));
+  const [developers, setDevelopers] = useState<Developer[]>(() => getInitialStorage('linnk_developers', INITIAL_DEVELOPERS));
+  const [developments, setDevelopments] = useState<Development[]>(() => getInitialStorage('linnk_developments', INITIAL_DEVELOPMENTS));
+  const [clients, setClients] = useState<Client[]>(() => getInitialStorage('linnk_clients', INITIAL_CLIENTS));
+  const [referrals, setReferrals] = useState<Referral[]>(() => getInitialStorage('linnk_referrals', INITIAL_REFERRALS));
+  const [documents, setDocuments] = useState<ReferralDocument[]>(() => getInitialStorage('linnk_documents', INITIAL_DOCUMENTS));
+  const [attendances, setAttendances] = useState<Attendance[]>(() => getInitialStorage('linnk_attendances', INITIAL_ATTENDANCES));
+  const [sales, setSales] = useState<Sale[]>(() => getInitialStorage('linnk_sales', INITIAL_SALES));
+  const [transactions, setTransactions] = useState<FinancialTransaction[]>(() => getInitialStorage('linnk_transactions', INITIAL_TRANSACTIONS));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => getInitialStorage('linnk_audit_logs', INITIAL_AUDIT_LOGS));
   const [commissionConfig, setCommissionConfig] = useState<CommissionRuleConfig>(
-    INITIAL_COMMISSION_CONFIG
+    () => getInitialStorage('linnk_comm_config', INITIAL_COMMISSION_CONFIG)
   );
+
+  useEffect(() => { setLocalStorage('linnk_sales', sales); }, [sales]);
+  useEffect(() => { setLocalStorage('linnk_transactions', transactions); }, [transactions]);
+  useEffect(() => { setLocalStorage('linnk_referrals', referrals); }, [referrals]);
+  useEffect(() => { setLocalStorage('linnk_documents', documents); }, [documents]);
+  useEffect(() => { setLocalStorage('linnk_attendances', attendances); }, [attendances]);
+  useEffect(() => { setLocalStorage('linnk_clients', clients); }, [clients]);
+  useEffect(() => { setLocalStorage('linnk_developments', developments); }, [developments]);
+  useEffect(() => { setLocalStorage('linnk_brokers', brokers); }, [brokers]);
+  useEffect(() => { setLocalStorage('linnk_developers', developers); }, [developers]);
+  useEffect(() => { setLocalStorage('linnk_users', users); }, [users]);
+  useEffect(() => { setLocalStorage('linnk_audit_logs', auditLogs); }, [auditLogs]);
+  useEffect(() => { setLocalStorage('linnk_comm_config', commissionConfig); }, [commissionConfig]);
 
   // Helper para gravação simultânea de logs de auditoria (local + Supabase)
   const appendAudit = (
@@ -296,17 +333,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const data = await SupabaseService.fetchAllInitialData();
         if (data) {
-          setUsers(data.users || []);
-          setBrokers(data.brokers || []);
-          setDevelopers(data.developers || []);
-          setDevelopments(data.developments || []);
-          setClients(data.clients || []);
-          setReferrals(data.referrals || []);
-          setDocuments(data.documents || []);
-          setAttendances(data.attendances || []);
-          setSales(data.sales || []);
-          setTransactions(data.transactions || []);
-          setAuditLogs(data.auditLogs || []);
+          if (data.users && data.users.length > 0) setUsers(data.users);
+          if (data.brokers && data.brokers.length > 0) setBrokers(data.brokers);
+          if (data.developers && data.developers.length > 0) setDevelopers(data.developers);
+          if (data.developments && data.developments.length > 0) setDevelopments(data.developments);
+          if (data.clients && data.clients.length > 0) setClients(data.clients);
+          if (data.referrals && data.referrals.length > 0) setReferrals(data.referrals);
+          if (data.documents && data.documents.length > 0) setDocuments(data.documents);
+          if (data.attendances && data.attendances.length > 0) setAttendances(data.attendances);
+          if (data.sales && data.sales.length > 0) setSales(data.sales);
+          if (data.transactions && data.transactions.length > 0) setTransactions(data.transactions);
+          if (data.auditLogs && data.auditLogs.length > 0) setAuditLogs(data.auditLogs);
           if (data.commissionConfig) {
             setCommissionConfig(data.commissionConfig);
           }
